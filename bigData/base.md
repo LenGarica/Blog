@@ -1,218 +1,81 @@
 # Ubuntu系统环境搭建
 
-## 一、安装软件的环境变量配置
+## 一、软件环境变量配置
 
 ```bash
-# java environment
-export	JAVA_HOME=/usr/lib/jdk1.8.0_211
-export	CLASSPATH=.:$JAVA_HOME/lib:$JRE_HOME/lib:$CLASSPATH
-export	PATH=$JAVA_HOME/bin:$JRE_HOME/bin:$PATH
-export	JRE_HOME=$JAVA_HOME/jre
+# node js
+export NODE_HOME=/home/tony/app/node-v14.16.1-linux-x64/bin
+export PATH=$NODE_HOME:$PATH
 
-# scala environment
-export SCALA_HOME=/usr/lib/scala-2.11.12
+# java env 
+export JAVA_HOME=/home/tony/app/jdk1.8.0_291
+export JRE_HOME=$JAVA_HOME/jre
+export CLASSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib
+export PATH=${JAVA_HOME}/bin:${JRE_HOME}/bin:$PATH
+
+# maven env
+export MAVEN_HOME=/home/tony/app/apache-maven-3.6.3-bin/apache-maven-3.6.3
+export PATH=$MAVEN_HOME/bin:$PATH
+
+# scala env
+export SCALA_HOME=/home/tony/app/scala-2.11.12
 export PATH=$SCALA_HOME/bin:$PATH
 
-# hadoop environment
-export HADOOP_HOME=/home/willhope/app/hadoop-2.6.0-cdh5.15.1
+# hadoop env
+export HADOOP_HOME=/home/tony/app/hadoop-2.6.0-cdh5.15.1
 export PATH=$HADOOP_HOME/bin:$PATH
 
-# hive environment
-export HIVE_HOME=/home/willhope/app/hive-1.1.0-cdh5.15.1
+# hive env
+export HIVE_HOME=/home/tony/app/hive-1.1.0-cdh5.15.1
 export PATH=$HIVE_HOME/bin:$PATH
 
-# spark environment
-export SPARK_HOME=/home/willhope/app/spark-2.4.4-bin-2.6.0-cdh5.15.1
-export PATH=$SPARK_HOME/bin:$PATH
-
-# hbase environment
-export HBASE_HOME=/home/willhope/app/hbase-1.2.0-cdh5.15.1 
+# hbase env
+export HBASE_HOME=/home/willhope/app/hbase-1.2.0-cdh5.15.1
 export PATH=$HBASE_HOME/bin:$PATH
 
+# spark environment
+export SPARK_HOME=/home/tony/app/spark-2.4.4-bin-2.6.0-cdh5.15.1
+export PATH=$SPARK_HOME/bin:$PATH
+
+
 # sqoop environment
-export SQOOP_HOME=/home/willhope/app/sqoop2-1.99.5-cdh5.15.1
+export SQOOP_HOME=/home/tony/app/sqoop-1.4.7.bin__hadoop-2.6.0
 export PATH=$SQOOP_HOME/bin:$PATH
 
 # zookeeper environment
-export ZOOKEEPER_HOME=/home/willhope/app/zookeeper-3.4.5-cdh5.15.1
+export ZOOKEEPER_HOME=/home/tony/app/zookeeper-3.4.5-cdh5.15.1
 export PATH=$ZOOKEEPER_HOME/bin:$PATH
 
 # kafka environment
-export KAFKA_HOME=/home/willhope/app/kafka_2.11-2.4.0
+export KAFKA_HOME=/home/tony/app/kafka_2.11-0.9.0.0
 export PATH=$KAFKA_HOME/bin:$PATH
 
 # flume environment
-export FLUME_HOME=/home/willhope/app/apache-flume-1.6.0-cdh5.15.1-bin
+export FLUME_HOME=/home/tony/app/flume
 export PATH=$FLUME_HOME/bin:$PATH
 
-# anaconda environment
-export PATH=/home/willhope/anaconda3/bin:$PATH
-
-# maven environment
-export PATH=/home/willhope/app/apache-maven-3.5.4/bin:$PATH
+# flink env
+export FLINK_HOME=/home/tony/app/flink-1.7.0
+export PATH=$FLINK_HOME/bin:$PATH
 
 
+# kibana env
+export LIBANA_HOME=/home/tony/kibana-6.8.12-linux-x86_64
+export PATH=$KIBANA_HOME/bin:$PATH
+
+# elastic
+export ELASTIC_HOME=/home/tony/app/elasticsearch-6.8.12
+export PATH=$ELASTIC_HOME/bin:$PATH
+
+# go env
+export GO_HOME=/home/tony/app/go
+export PATH=$GO_HOME/bin:$PATH
 ```
 
-### deepin下QQ、微信的安装
 
-- QQ可以安装直接在应用商店里面安装Tim版本。
-
-- 微信的安装：
-
-    sudo apt install deepin.com.wechat -y 
-
-    mkdir /tmp/wechat
-
-    cd /tmp/wechat
-
-    wget https://dldir1.qq.com/weixin/Windows/WeChatSetup.exe
-
-    env WINEPREFIX=~/.deepinwine/Deepin-WeChat deepin-wine WeChatSetup.exe
-
-
-- deepin扩展屏幕
-
-    1. xrandr(先查看自己的设备信息，一般会出现一个eDP-1这个设备是自己的，还有一个HDMI-1设备)
-    2. xrandr --output HDMI-1 --
-     --primary(再输入这句话)
-    3. xrandr --output eDP-1 --right-of HDMI-1 --
-    (再输入这句话)
-    4. 然后外接显示器的时候，进行设置。
-    5. 没有上面的这几句，显示器有可能不亮
-    
-### deepin下JDK的安装（JDK8和JDK13）
-
-1. 首先进入到root权限
-
-    sudo -i
-
-2. 其次为Java创建目录，并且将JDK压缩包COPY一份放到创建的目录下
-
-    mkdir /usr/java
-
-    cp /home/willhope/Downloads/jdk-8u211-linux-x64.tar.gz /usr/java/   （这里前面一个地址是你安装包所在的地址）
-
-    ls /usr/java/    （检查一下，是否copy成功）
-
-    cd /usr/java/    （进到JDK所在目录）
-
-    tar -zxvf jdk-8u211-linux-x64.tar.gz    （进行解压缩）
-
-    ls   （检查一下是否解压缩成功）
-
-3. 环境变量的配置
-
-    cd  (退出到根目录)
-
-    vi /etc/profile （进入全局环境变量）
-
-    a   （随便找到一行，进入编辑模式）
-
-    #Java environment<br>
-
-    export JAVA_HOME=/usr/java/jdk1.8.0_211
-
-    export JRE_HOME=${JAVA_HOME}/jre
-
-    export CLASSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib
-
-    export PATH=${JAVA_HOME}/bin:$PATH
-
-    esc  （退出编辑模式）
-
-    ：wq    （保存退出）
-
-    source /etc/profile  （执行命令）
-
-    java -version    （查看是否安装成功）
-
-    Java13的安装：在官网或者任意开源镜像中下载包，这里推荐deb的包，可以让deepin自动安装。
-
-    
-### deepin下Scala的安装
-
-1. 首先进入到root权限
-
-    sudo -i
-
-2. 其次为Java创建目录，并且将JDK压缩包COPY一份放到创建的目录下
-
-    mkdir /usr/scala/
-
-    cp /home/willhope/Downloads/scala-2.11.12.tgz /usr/scala/ （这里前面一个地址是你安装包所在的地址）
-
-    ls /usr/scala/    （检查一下，是否copy成功）
-
-    cd /usr/scala/    （进到JDK所在目录）
-
-    tar -zxvf scala-2.11.12.tgz   （进行解压缩）
-
-    ls   （检查一下是否解压缩成功）
-
-
-3. 环境变量的配置
-
-    cd  (退出到根目录)
-
-    vi /etc/profile （进入全局环境变量）
-    
-    a   （随便找到一行，进入编辑模式）
-
-    #Scala environment
-
-    export SCALA_HOME=/usr/scala/scala-2.11.12
-
-    export PATH=${SCALA_HOME}/bin:$PATH
-    
-    esc  （退出编辑模式）
-
-    ：wq    （保存退出）
-
-    source /etc/profile  （执行命令）
-
-    scala -version    （查看是否安装成功）
-    
-
-安装完成后会出现  Picked up _JAVA_OPTIONS:   -Dawt.useSystemAAFontSettings=gasp   且在以后的IDEA中，编译时也会出现这句话，不需要担心，这是因为JVM的原因。因为Java和Scala同属JVM上的，所以忽略就行，如果实在是强迫症患者，可以自行搜索别人博客修改。
-
-
-
-### deepin下MySQL安装
-
-1. apt install mysql-server
-2. mysql -u root -p  （此时无密码，直接回车）
-3. show databases;
-4. 使用 use mysql; 命令打开mysql命名的数据库，显示当前数据库的表：show tables; 查询user表里的数据：select host,user,authentication_string from mysql.user;（user表里是mysql数据库的所有账户信息）
-5. 修改密码update mysql.user set authentication_string=password("123456") where user="root";
-6. 如果安装失败，可参考这篇文章　https://www.cnblogs.com/cpl9412290130/p/9583868.html
-
-    
-### deepin下Redis安装（暂时不用）
-
-方法一：这个方法安装的redis可能不是新的版本
-
-1. sudo apt-get install redis-server
-2. 检查Redis服务器系统进程  ps -aux|grep redis
-3. 查看redis端口状态  netstat -nlt|grep 6379
-4. 卸载操作 sudo apt-get purge --
--remove redis-server
-
-方法二：在官网上下载5.0版本的包，然后解压缩
-
-然后进入redis目录下，执行 make && make install
-
-安装成功之后，进入Redis的src目录
-
-启动服务端：./redis-server
-
-启动客户端：./redis-cli
-
-
-### Hadoop安装
+## 二、Hadoop安装
 
 使用的是CDH版本，下载地址archive.cloudera.com/cdh5/cdh/5
-    
 1. 打开终端，创建几个文件夹mkdir software (存放软件安装包), app （存放软件安装目录）, data （存放要使用的数据）, lib　（存放开发的jar包) ,shell (存放相关脚本),maven仓库存放在默认的.m2下面，也可以自行更改
 
 2. uname -a 查看自己电脑的用户名，或者打开终端后，用户名字@后面的字就是用户名
@@ -350,9 +213,8 @@ export PATH=/home/willhope/app/apache-maven-3.5.4/bin:$PATH
             [-usage [cmd ...]]
     ```
     
-    
 
-### Hive部署
+## 三、Hive部署
 
 在 http://archive.cloudera.com/cdh5/cdh/5/找到hive-1.1.0-cdh5.15.1.tar.gz 这个包，将其下载下来，解压到app目录下。将hive添加到系统环境中，方便使用，但是这里最好重新启动一下机器。在使用hive前，必须先将hadoop平台的所有东西启动起来。
 
@@ -396,7 +258,7 @@ HADOOP_HOME=/home/willhope/app/hadoop-2.6.0-cdh5.15.1（注意更换你的地址
 
 ```
 
-### Hive配置遇到的坑
+## 四、Hive配置遇到的坑
 
 遇到一个坑，以前学的时候用的是别人提供的镜像没有这种问题，现在学的时候用的是deepin，在配置好各种内容，启动hive，在hive中查询时，总是会提出Error: Syntax error: Encountered “” at line 1, column 64。
 
@@ -404,7 +266,7 @@ HADOOP_HOME=/home/willhope/app/hadoop-2.6.0-cdh5.15.1（注意更换你的地址
 
 最终，解决方法是，删除原来的hive，然后重新配置好hive，在启动hive之前，进行初始化，进入到bin目录，执行 ./schematool -dbType mysql -initSchema -verbose，schemaTool completed则表明成功，并且会完成在mysql中数据库的创建（也就是hive-site.xml中配置的数据库），此时数据库中的表都是空的，没有内容。然后在bin下执行hive，执行create database test_db后，表中就有内容了，以及其他查询操作，即可成功。（在hive执行sql语句时，会发现一个ssl警告，可以忽略，也可以在hive-site.xml，配置数据库名字那一行createDatabaseIfNotexist=true后面添加上;ssl=true）
 
-### Sqoop安装
+## 五、Sqoop安装
 
 #### 一、Sqoop 简介
 
@@ -563,3 +425,230 @@ cp hive-common-1.1.0-cdh5.15.1.jar ~/app/sqoop-1.4.7/lib/
 ```bash
 cp $HIVE_HOME/lib/hive-shims-*.jar ~/app/sqoop-1.4.7/lib/
 ```
+
+## 六、Spark安装
+
+### 一、Spark源码的编译
+
+在spark.apache.org中下载spark，这里我们选择2.4.4的source code版本。下载后解压到software文件夹中。[Spark学习的官网](http://spark.apache.org/docs/latest/)。
+
+注意：如果使用maven编译的话，这里有一个非常大的坑，官网要求基于 maven 的构建是 Apache Spark 的引用构建。 使用 Maven 构建 Spark 需要 Maven 3.5.4和 java8。 注意，从 Spark 2.2.0开始，Java 7的支持就被移除了。因此，一定要下载好对应的maven版本，否则会出现编译错误的情况。此外，因为本项目都是在CDH5.15.1平台上，因此在spark源码下的pom.xml文件中，要加上下面。但其实也可以使用Spark自带的maven进行编译，这样会省一些事情，本项目用的是自带的进行编译。
+
+````xml
+  <repository>
+        <id>cloudera</id>
+        <url>https://repository.cloudera.com/artifactory/cloudera-repos</url>
+  </repository>
+````
+
+在spark源码目录下的dev目录中更改 make-distribution.sh
+
+```bash
+export MAVEN_OPTS="${MAVEN_OPTS:--Xmx2g -XX:ReservedCodeCacheSize=512m -XX:ReservedCodeCacheSize=512m}"
+```
+
+此时看一下自己的scala版本，在终端中输入scala -version进行查看，spark2.4版本只支持2.11和2.12版本的scala。然后在spark目录下执行./dev/change-scala-version.sh 2.11
+
+在Spark源码目录下，执行下面的语句，这个过程会非常缓慢。估计得30分钟到1个小时，刚开始编译时，可能会发现终端一直卡着不动，这是正在检索所需要的环境，要耐心等待。
+
+```m
+./build/mvn -Pyarn -Phadoop-2.6 -Phive -Phive-thriftserver -Dhadoop.version=2.6.0-cdh5.15.1 -DskipTests clean package
+
+推荐使用这个
+./dev/make-distribution.sh --name 2.6.0-cdh5.15.1 --tgz  -Pyarn -Phadoop-2.6 -Phive -Phive-thriftserver -Dhadoop.version=2.6.0-cdh5.15.1
+执行完后，会出现一个spark-2.4.4-bin-2.6.0-cdh5.15.1.tgz包。
+```
+
+### 二、Spark环境的搭建
+
+将编译好的spark-2.4.4-bin-2.6.0-cdh5.15.1.tgz包解压到app中。进入到解压的目录下，我们在spark的bin目录下，看到很多.cmd的文件，这些文件是在windows上运行的，因此我们可以删除，使用rm -rf *.cmd
+
+将spark配入到系统环境变量中，使用pwd查看路径，然后在终端中打开/etc/profile，添加如下的代码：
+
+```xml
+  export SPARK_HOME=/home/willhope/app/spark-2.4.4-bin-2.6.0-cdh5.15.1
+  export PATH=$SPARK_HOME/bin:$PATH
+
+  然后保存后，执行source etc/profile
+```
+
+修改sbin目录下的spark-config.sh,添加jdk的环境变量。
+
+在spark目录下的bin下，执行spark-shell --master local[2]
+
+可以在 http://192.168.0.100:4040 监控spark。**此地址每个电脑都不一样。在执行上面的指令后，我们会看到Spark context Web UI available at http://192.168.1.4:4041 这句话**，这个地址是多少，我们就使用多少。
+
+
+在conf目录下，设置 cp spark-env.sh.template spark-env.sh，然后配置下面的语句
+
+```bash
+SPARK_MASTER_HOST=willhope-pc
+SPARK_WORKER_CORES=2
+SPARK_WORKER_MEMORY=2g
+SPARK_WORKER_INSTANCES=1  # 这里以后可以任意设置
+```
+
+Spark Standalone模式的架构和Hadoop HDFS/YARN很类似的 1 master + n worker
+
+启动spark，进入sbin目录，然后输入./start-all.sh，进入 http://192.168.0.100:8080/ (**前面的地址每个电脑都不一样，但是端口号通常是一样的**)可以查看信息，然后在bin目录下，执行spark-shell --master spark://willhope-PC:7077  (后面这个spark://willhope-PC:7077在你的 http://192.168.0.100:8080/ 页面的顶部位置可见)，启动时间有些长。
+
+
+### 三、使用Spark完成wordcount统计
+
+在bin目录下，执行spark-shell --master spark://willhope-PC:7077 ，会出现一个spark图像；也可以使用spark-shell --master local[2],推荐使用后者，这样可以使机器负载低一些。
+
+```
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /___/ .__/\_,_/_/ /_/\_\   version 2.4.4
+      /_/
+
+Using Scala version 2.11.12 (Java HotSpot(TM) 64-Bit Server VM, Java 1.8.0_211)
+Type in expressions to have them evaluated.
+Type :help for more information.
+
+scala>
+
+```
+
+然后进行scala输入，可以将下面三行代码直接粘贴进去。注意，自己定义一个文件，用来操作wordcount统计
+
+```s
+# 仅仅只需要三行，就可以完成之前java写MR那些代码，但其实我们也可以使用Java8提供的函数式编程来简化代码
+
+//获取文件
+val file = spark.sparkContext.textFile("file:///home/willhope/data/hello.txt")
+val wordCounts = file.flatMap(line => line.split("\t")).map((word => (word, 1))).reduceByKey(_ + _)
+wordCounts.collect
+
+运行结果：
+
+scala> val file = spark.sparkContext.textFile("file:///home/willhope/data/hello.txt")
+file: org.apache.spark.rdd.RDD[String] = file:///home/willhope/data/hello.txt MapPartitionsRDD[1] at textFile at <console>:23
+
+scala> val wordCounts = file.flatMap(line => line.split("\t")).map((word => (word, 1))).reduceByKey(_ + _)
+wordCounts: org.apache.spark.rdd.RDD[(String, Int)] = ShuffledRDD[4] at reduceByKey at <console>:25
+
+scala> wordCounts.collect
+res0: Array[(String, Int)] = Array((word,3), (hello,5), (world,3))  
+
+```
+
+## 七、Flink单机部署
+
+### 一、前置条件：
+
+JDK、Maven3、Flink源码进行编译，不是使用直接下载二进制包
+
+下载flink源码包：wget [https://github.com/apache/flink/archive/release-1.7.0.tar.gz](https://gitee.com/link?target=https%3A%2F%2Fgithub.com%2Fapache%2Fflink%2Farchive%2Frelease-1.7.0.tar.gz)
+
+### 二、编译
+
+将下载的源码包进行解压，进入到该解压包，执行下面的语句进行编译：
+
+mvn clean install -DskipTests -Pvendor-repos -Dfast -Dhadoop.version=2.6.0-cdh5.15.1
+
+第一次编译是需要花费很长时间的，因为需要去中央仓库下载flink源码中所有的依赖包
+
+如果遇到某个包下载不下来而出现错误，可以根据错误提示手动下载包，并进行安装，之后重新编译。此处举一个例子，我在编译时候，这个maprfs-5.2.1-mapr.jar包总数出现问题，那就去[https://mvnrepository.com/](https://gitee.com/link?target=https%3A%2F%2Fmvnrepository.com%2F) 找这个包，下载后，进行手动安装。
+
+mvn install:install-file -DgroupId=com.mapr.hadoop  -DartifactId=maprfs -Dversion=5.2.1-mapr -Dpackaging=jar   -Dfile=/home/willhope/Downloads/maprfs-5.2.1-mapr.jar
+
+mvn install:install-file -DgroupId=org.apache.flink  -DartifactId=flink-mapr-fs -Dversion=1.7.0 -Dpackaging=jar  -Dfile=/home/willhope/Downloads/flink-mapr-fs-1.7.0.jar
+
+安装完毕后，继续编译mvn clean install -DskipTests -Pvendor-repos -Dfast -Dhadoop.version=2.6.0-cdh5.15.1 -rf :flink-mapr-fs
+
+测试：使用flink执行wordcount
+
+```
+./bin/flink run examples/streaming/SocketWindowWordCount.jar --port 9000
+```
+
+将flink添加到环境中并source，$FLINK_HOME
+
+## 八、Elastic的部署
+
+在官网下载源文件 [https://www.elastic.co/cn/downloads/elasticsearch](https://gitee.com/link?target=https%3A%2F%2Fwww.elastic.co%2Fcn%2Fdownloads%2Felasticsearch)
+
+解压源文件，在bin目录下执行./elasticsearch，然后在浏览器中输入，[http://localhost:9200/，查看是否出现elasticsearch相关信息。](https://gitee.com/link?target=http%3A%2F%2Flocalhost%3A9200%2F%EF%BC%8C%E6%9F%A5%E7%9C%8B%E6%98%AF%E5%90%A6%E5%87%BA%E7%8E%B0elasticsearch%E7%9B%B8%E5%85%B3%E4%BF%A1%E6%81%AF%E3%80%82)
+
+如果想要后台运行，则在bin目录下，执行 ./elasticsearch -d
+
+## 九、Kibana部署
+
+与Elastic一样在官网下载，解压源文件，在bin目录下，执行 ./kibana ，然后在浏览器中输入 [http://localhost:5601/app/home#](https://gitee.com/link?target=http%3A%2F%2Flocalhost%3A5601%2Fapp%2Fhome%23) 即可访问kibana
+
+## 十、Flume安装
+
+1. 在终端下载： wget：[http://archive.cloudera.com/cdh5/cdh/5/flume-ng-1.6.0-cdh5.15.1.tar.gz](https://gitee.com/link?target=http%3A%2F%2Farchive.cloudera.com%2Fcdh5%2Fcdh%2F5%2Fflume-ng-1.6.0-cdh5.15.1.tar.gz)
+
+[http://archive.cloudera.com/cdh5/cdh/5/zookeeper-3.4.5-cdh5.15.1.tar.gz](https://gitee.com/link?target=http%3A%2F%2Farchive.cloudera.com%2Fcdh5%2Fcdh%2F5%2Fzookeeper-3.4.5-cdh5.15.1.tar.gz)
+
+1. 解压缩： tar -zxvf flume-ng-1.6.0-cdh5.15.1.tar.gz /home/willhope/app
+2. 添加环境变量： sudo vi /etc/profile
+
+```
+# flume environment
+
+export FLUME_HOME=/home/willhope/app/apache-flume-1.6.0-cdh5.15.1-bin
+
+export PATH=$FLUME_HOME/bin:$PATH
+```
+
+1. 生效 source /etc/profile
+2. 到flume下面的conf目录设置
+
+```
+cp flume-env.sh.template flume-env.sh
+vi flume-env.sh
+export JAVA_HOME=/..........  在终端输入echo JAVA_HOME可以查看
+```
+
+1. 查看安装成功
+
+在flume的bin目录下输入：flume-ng version
+
+## 十一、zookeeper的安装
+
+下载zookeeper-3.4.5-cdh5.15.1.tar.gz，解压缩到app目录下，然后配到系统环境变量，再source一下
+
+```
+#zookeeper environment
+export ZK_HOME=/home/willhope/app/zookeeper-3.4.5-cdh5.15.1
+export PATH=$ZK_HOME/bin:$PATH
+```
+
+将conf目录下的zoo_sample.cfg复制一份为zoo.cfg，然后修改conf目录下的zoo.cfg，设置dataDir=/home/willhope/app/tmp/zookeeper
+
+进入到bin目录，输入 ./zkServer.sh start 启动zookeeper
+
+jps查看成功与否：出现QuorumPeerMain 则表明成功
+
+连接客户端： ./zkCli.sh
+
+## 十二、Kafka安装
+
+官网下载 kafka_2.11-2.4.0.tgz，然后解压到 app目录中，配置到环境变量中，再source一下
+
+```
+#kafka environment
+export KF_HOME=/home/willhope/app/kafka_2.11-2.4.0
+export PATH=$KF_HOME/bin:$PATH
+```
+
+- 单节点单brocker的部署以及使用
+
+Kafka目录下的config下的server.properties
+
+```
+broker.id=0c
+listeners=PLAINTEXT://:9092
+host.name=willhope-pc
+log.dirs=/home/willhope/app/tmp/kafka-logs
+zookeeper.connect=willhope-pc:2181
+```
+
+启动Kafka， 在bin目录下执行： kafka-server-start.sh -daemon $KAFKA_HOME/config/server.properties ，jps 之后会出现kafka进程
+
