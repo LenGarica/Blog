@@ -1752,78 +1752,6 @@ class Solution {
 }
 ```
 
-#### **28、从尾到头打印链表（ 剑指offer6）**
-
-**题目：** 输入一个链表的头节点，从尾到头反过来返回每个节点的值（用数组返回）。
-
-**示例：** 输入：head = [1,3,2]   输出：[2,3,1]
-
-**题解：** 
-
-```java
-/**
- * Definition for singly-linked list.
- * public class ListNode {
- *     int val;
- *     ListNode next;
- *     ListNode(int x) { val = x; }
- * }
- */
-class Solution {
-    public int[] reversePrint(ListNode head) {
-        // 链式栈
-        Stack<ListNode> stack = new Stack<>();
-        ListNode temp = head;
-        while (temp != null){
-            stack.push(temp);
-            temp = temp.next;
-        }
-        int size = stack.size();
-        int[] resultArr = new int[size];
-        for (int i = 0; i < size; i++) {
-            resultArr[i] = stack.pop().val;
-        }
-        return resultArr;
-    }
-}
-```
-
-#### **29、链表中倒数第k个节点（ 剑指offer22）**
-
-**题目：** 输入一个链表，输出该链表中倒数第k个节点。为了符合大多数人的习惯，本题从1开始计数，即链表的尾节点是倒数第1个节点。例如，一个链表有 6 个节点，从头节点开始，它们的值依次是 1、2、3、4、5、6。这个链表的倒数第 3 个节点是值为 4 的节点。
-
-**示例：** 给定一个链表: 1->2->3->4->5, 和 k = 2.  返回链表 4->5.
-
-**题解：** 
-
-```java
-/**
- * Definition for singly-linked list.
- * public class ListNode {
- *     int val;
- *     ListNode next;
- *     ListNode(int x) { val = x; }
- * }
- */
-class Solution {
-    public ListNode getKthFromEnd(ListNode head, int k) {
-        ListNode fast = head;
-        ListNode slow = head;
-
-        while (fast != null && k > 0) {
-            fast = fast.next;
-            k--;
-        }
-        while (fast != null) {
-            fast = fast.next;
-            slow = slow.next;
-        }
-
-        return slow;
-    }
-}
-```
-
 #### **30、数组中第K大的元素（ LeetCode 215）**
 
 **题目：** 
@@ -4427,42 +4355,7 @@ public class Solution {
 
 ```
 
-#### **36、二叉树的镜像（ 剑指offer 27）**
-
-**题目：** 
-
-**示例：** 
-
-**题解：** 
-
-```java
-
-```
-#### **37、二叉树中和为某一值的路径（ 剑指offer 34）**
-
-**题目：** 
-
-**示例：** 
-
-**题解：** 
-
-```java
-
-```
-
 #### **38、相同的树（ LeetCode 100）**
-
-**题目：** 
-
-**示例：** 
-
-**题解：** 
-
-```java
-
-```
-
-#### **39、重建二叉树（ 剑指offer 07）**
 
 **题目：** 
 
@@ -4678,95 +4571,9 @@ public int lengthOfLongestSubstring(String s) {
 
 ```
 
-#### **13、最长不含重复字符的子字符串（ 剑指offer 48）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **14、字符串中的变位词（ 剑指offer 14）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **15、字符串中所有的变位词（ 剑指offer 15）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **16、不含重复字符的最长子字符串（ 剑指offer 16）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **17、含有所有字符的最短字符串（ 剑指offer 17）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
 ### **五、图论与搜索算法**
 
 #### **1、所有可能的路径（ LeetCode 797）**
-
-**题目：**
-
-**示例：** 
-
-```
-
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **2、所有的路径（ 剑指offer 110）**
 
 **题目：**
 
@@ -4814,22 +4621,6 @@ public int lengthOfLongestSubstring(String s) {
 
 ```
 
-#### **5、课程顺序（ 剑指offerⅡ 113）**
-
-**题目：**
-
-**示例：** 
-
-```
-
-```
-
-**题解：** 
-
-```java
-
-```
-
 #### **6、判断二分图（ LeetCode 785）**
 
 **题目：**
@@ -4847,22 +4638,6 @@ public int lengthOfLongestSubstring(String s) {
 ```
 
 #### **7、可能的二分法（ LeetCode 886）**
-
-**题目：**
-
-**示例：** 
-
-```
-
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **8、二分图（ 剑指offer 106）**
 
 **题目：**
 
@@ -5102,22 +4877,6 @@ public int lengthOfLongestSubstring(String s) {
 
 ```
 
-#### **23、开密码锁（ 剑指offer 109）**
-
-**题目：**
-
-**示例：** 
-
-```
-
-```
-
-**题解：** 
-
-```java
-
-```
-
 #### **24、滑动谜题（ LeetCode 773）**
 
 **题目：**
@@ -5152,20 +4911,6 @@ public int lengthOfLongestSubstring(String s) {
 ```
 
 #### **2、N皇后（ LeetCode 51）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **3、没有重复元素集合的全排列（ 剑指offer 83）**
 
 **题目：**
 
@@ -5305,88 +5050,6 @@ public int lengthOfLongestSubstring(String s) {
 
 ```
 
-#### **13、所有子集（ 剑指offer 79）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **14、含有k个元素的组合（ 剑指offer 80）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **15、允许重复选择元素的组合（剑指offer 81）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **16、含有重复元素的组合（剑指offer 82）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-
-#### **17、没有重复元素集合的全排列（ 剑指offer 83）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
-#### **18、含有重复元素集合的全排列（剑指offer 84）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
 #### **19、解数独（ LeetCode 37）**
 
 **题目：**
@@ -5413,20 +5076,8 @@ public int lengthOfLongestSubstring(String s) {
 ```java
 
 ```
-#### **21、生成匹配的括号（剑指offer 85）**
-
-**题目：**
-
-**示例：** 
-```
-```
-
-**题解：** 
-
-```java
-
-```
 ### **七、贪心**
+
 #### **1、Yogurt factory 机器工厂 （洛谷P1376）**
 **题目：** 小 T 开办了一家机器工厂，在 $N$个星期内，原材料成本和劳动力价格不断起伏，第 $i$ 周生产一台机器需要花费 $C_i$ 元。若没把机器卖出去，每保养一台机器，每周需要花费 $S$ 元，这个费用不会发生变化。机器工厂接到订单，在第 $i$ 周需要交付 $Y_i$ 台机器给委托人，第 $i$ 周刚生产的机器，或者之前的存货，都可以进行交付。请你计算出这 $n$ 周时间内完成订单的最小代价。
 
@@ -5499,6 +5150,7 @@ public class P1376 {
 ```
 
 **题解：** 
+
 ```java
 
 public class Code2 {
@@ -5572,7 +5224,7 @@ public class Code2 {
     }
 }
 ```
-#### **3、守望者的逃离**
+#### **3、守望者的逃离（洛谷P1095）**
 
 **题目：**
 守望者在与尤迪安的交锋中遭遇了围杀，被困在一个荒芜的大岛上。
@@ -5599,15 +5251,6 @@ public class Code2 {
 No
 197
 ```
-
-**提示：** 
-
-对于 $30\%$ 的数据，$1  \le  T   \le  10$，$ 1   \le   S   \le  100$；
-
-对于 $50\%$ 的数据，$1   \le  T   \le   10^3$，$ 1   \le  S  \le   10^4$；
-
-对于 $100\%$ 的数据，$1   \le   T   \le   3\times  10^5$，$0   \le   M   \le   10^3$，$ 1   \le  S   \le   10^8$。
-
 
 **题解：** 
 
@@ -5705,6 +5348,55 @@ No
 
 **示例：** 
 ```
+```
+
+**题解：** 
+
+```java
+
+```
+
+#### **11、跳石头（ 洛谷P2678）**
+
+**题目：**
+
+**示例：** 
+
+```
+```
+
+**题解：** 
+
+```java
+
+```
+
+#### **10、旅行家的预算（ 洛谷P1016）**
+**题目：**
+
+一个旅行家想驾驶汽车以最少的费用从一个城市到另一个城市（假设出发时油箱是空的）。给定两个城市之间的距离 $D_1$、汽车油箱的容量 $C$（以升为单位）、每升汽油能行驶的距离 $D_2$、出发点每升汽油价格$P$和沿途油站数 $N$（$N$ 可以为零），油站 $i$ 离出发点的距离 $D_i$、每升汽油价格 $P_i$（$i=1,2,…,N$）。计算结果四舍五入至小数点后两位。如果无法到达目的地，则输出 `No Solution`。
+
+输入格式
+
+第一行，$D_1$，$C$，$D_2$，$P$，$N$。
+
+接下来有 $N$ 行。
+
+第 $i+1$ 行，两个数字，油站 $i$ 离出发点的距离 $D_i$ 和每升汽油价格 $P_i$。
+
+输出格式
+
+所需最小费用，计算结果四舍五入至小数点后两位。如果无法到达目的地，则输出 `No Solution`。
+
+**示例：** 
+
+```
+输入：
+275.6 11.9 27.4 2.8 2
+102.0 2.9
+220.0 2.2
+输出：
+26.95
 ```
 
 **题解：** 
@@ -9038,11 +8730,71 @@ class NumMatrix {
 
 ### **八、剑指 Offer 系列**
 
+#### 剑指offer 03.数组中重复的数字
+
+**题目：**找出数组中重复的数字。在一个长度为 n 的数组 nums 里的所有数字都在 0～n-1 的范围内。数组中某些数字是重复的，但不知道有几个数字重复了，也不知道每个数字重复了几次。请找出数组中任意一个重复的数字。
+
+**示例：** 
+
+```
+输入：
+[2, 3, 1, 0, 2, 5, 3]
+输出：2 或 3 
+```
+
+**题解：** 
+
+```java
+public class Offer3 {
+
+    /**
+     * 长度为 n 的数组 nums 里的所有数字都在 0～n-1 的范围内，如果数组中有重复的元素，那么数组元素的索引和值是一对多的关系，
+     * 没有重复的话，元素和索引就是一对一的关系
+     * 思路：
+     * 遍历数组 nums ，设索引初始值为 i=0 :
+     *     若 nums[i]=i： 说明此数字已在对应索引位置，无需交换，因此跳过；
+     *     若 nums[nums[i]]=nums[i]： 代表索引 nums[i]处和索引 i处的元素值都为 nums[i]，即找到一组重复值，返回此值 nums[i] ；
+     *     否则： 交换索引为 i 和 nums[i] 的元素值，将此数字交换至对应索引位置。
+     *
+     * 若遍历完毕尚未返回，则返回 −1 。
+     *
+     * @param nums
+     * @return
+     */
+    public static int findRepeatNumber(int[] nums) {
+        int i = 0;
+        while (i < nums.length) {
+            if(nums[i] == i) {
+                i ++;
+                continue;
+            }
+
+            // 如果当前下标的元素 和 以这个元素为下标的位置处的元素相同，则表示有重复元素
+            if(nums[i] == nums[nums[i]]){
+                return nums[i];
+            }
+
+            int temp = nums[i];
+            nums[i] = nums[temp];
+            nums[temp] = temp;
+        }
+        return -1;
+    }
+
+    public static void main(String[] args) {
+        int[] nums = new int[]{2,3,1,0,2,5,3};
+        System.out.println(findRepeatNumber(nums));
+    }
+
+}
+```
+
 #### **剑指 Offer 04. 二维数组中的查找**
 
 **题目：** 在一个 n * m 的二维数组中，每一行都按照从左到右递增的顺序排序，每一列都按照从上到下递增的顺序排序。请完成一个高效的函数，输入这样的一个二维数组和一个整数，判断数组中是否含有该整数。
 
 **示例：** 
+
 ```
 [
     [1,   4,  7, 11, 15],
@@ -9059,21 +8811,52 @@ class NumMatrix {
 **题解：** 
 
 ```java
-class Solution {
-    public boolean findNumberIn2DArray(int[][] matrix, int target) {
-        int i = matrix.length - 1, j = 0;
-        while(i >= 0 && j < matrix[0].length)
-        {
-            if(matrix[i][j] > target) i--;
-            else if(matrix[i][j] < target) j++;
-            else return true;
+public class Offer4 {
+
+    /**
+     * 数组中每行，每列都遵循由小到大排列，因此我们从矩阵最左下角开始遍历，并于目标值比较
+     * 当 matrix[i][j] > target 时，说明这一行都会比所给目标值大，因此执行 i-- ，即消去第 i 行元素；
+     * 当 matrix[i][j] < target 时，说明这一列都比所给目标值小，执行 j++ ，即消去第 j 列元素；
+     * 当 matrix[i][j] = target 时，返回 truetruetrue ，代表找到目标值。
+     *
+     * @param matrix
+     * @param target
+     * @return
+     */
+    public static boolean findNumberIn2DArray(int[][] matrix, int target) {
+        // 初始坐标
+        int i = matrix.length - 1;
+        int j = 0;
+        while(i >= 0 && j <= matrix[0].length - 1){
+            int current = matrix[i][j];
+            if(current > target) {
+                i--;
+                continue;
+            }else if(current < target){
+                j++;
+                continue;
+            }else{
+                return true;
+            }
         }
         return false;
+    }
+
+    public static void main(String[] args) {
+        int[][] arr = new int[][]{
+                {1,   4,  7, 11, 15},
+                {2,   5,  8, 12, 19},
+                {3,   6,  9, 16, 22},
+                {10, 13, 14, 17, 24},
+                {18, 21, 23, 26, 30}
+        };
+        System.out.println(findNumberIn2DArray(arr, 5));
+        System.out.println(findNumberIn2DArray(arr, 20));
     }
 }
 ```
 
-#### **剑指 Offer 05. 替换空格**
+#### **剑指 Offer 05. 替换空格(这题没啥意义)**
 
 **题目：** 请实现一个函数，把字符串 s 中的每个空格替换成"%20"。
 **示例：** 
@@ -9084,24 +8867,28 @@ class Solution {
 **题解：** 
 
 ```java
-// 字符数组
-class Solution {
-    public String replaceSpace(String s) {
-        int length = s.length();
-        char[] array = new char[length * 3];
-        int size = 0;
-        for (int i = 0; i < length; i++) {
-            char c = s.charAt(i);
-            if (c == ' ') {
-                array[size++] = '%';
-                array[size++] = '2';
-                array[size++] = '0';
-            } else {
-                array[size++] = c;
+public class Offer5 {
+
+    public static String replaceSpace(String s) {
+        return s.replaceAll(" ", "%20");
+    }
+
+    public static String replaceSpace2(String s) {
+        StringBuffer sb = new StringBuffer();
+        for (char ch: s.toCharArray()) {
+            if(ch == ' '){
+                sb.append("%20");
+            }else{
+                sb.append(ch);
             }
         }
-        String newStr = new String(array, 0, size);
-        return newStr;
+        return sb.toString();
+    }
+
+    public static void main(String[] args) {
+       String s = "We are happy.";
+        System.out.println(replaceSpace(s));
+        System.out.println(replaceSpace2(s));
     }
 }
 ```
@@ -9127,20 +8914,116 @@ class Solution {
  * }
  */
 class Solution {
-    public int[] reversePrint(ListNode head) {
-        // 链式栈
+   /**
+     * 逆序打印链表，借助栈即可完成，因为栈是天然的先进后出型
+     * @param head
+     * @return
+     */
+    public static int[] reversePrint(ListNode head) {
         Stack<ListNode> stack = new Stack<>();
-        ListNode temp = head;
-        while (temp != null){
-            stack.push(temp);
-            temp = temp.next;
+
+        ListNode cur = head;
+        while(cur != null) {
+            stack.push(cur);
+            cur = cur.next;
         }
+
         int size = stack.size();
-        int[] resultArr = new int[size];
+        int[] ret = new int[size];
         for (int i = 0; i < size; i++) {
-            resultArr[i] = stack.pop().val;
+            ret[i] = stack.pop().val;
         }
-        return resultArr;
+        return ret;
+    }
+
+    public static void main(String[] args) {
+        ListNode node = new ListNode(1);
+        ListNode node2 = new ListNode(3);
+        ListNode node3 = new ListNode(2);
+        node.next = node2;
+        node2.next = node3;
+        System.out.println(Arrays.toString(reversePrint(node)));
+    }
+}
+```
+
+#### **剑指 Offer 07. 重建二叉树**
+
+**题目：** 输入某二叉树的前序和中序，构建二叉树，假设输入的序列都不含重复的数字。
+
+**示例：** 
+
+```
+Input: preorder = [3,9,20,15,7], inorder = [9,3,15,20,7]
+Output: [3,9,20,null,null,15,7]
+```
+
+**题解：** 
+```java
+public class Offer7 {
+
+    int[] preOrder;
+    // 定义缓存表，用来存储中序遍历的内容
+    HashMap<Integer, Integer> dict = new HashMap<>();
+    /**
+     * 前序遍历性质： 节点按照 [ 根节点 | 左子树 | 右子树 ] 排序。
+     * 中序遍历性质： 节点按照 [ 左子树 | 根节点 | 右子树 ] 排序。
+     * 以题目示例为例：
+     *         前序遍历划分 [ 3 | 9 | 20 15 7 ]
+     *         中序遍历划分 [ 9 | 3 | 15 20 7 ]
+     *
+     * 根据以上性质，可得出以下推论：
+     *     前序遍历的首元素 为 树的根节点 node 的值。
+     *     在中序遍历中搜索根节点 node 的索引 ，可将 中序遍历 划分为 [ 左子树 | 根节点 | 右子树 ] 。
+     *     根据中序遍历中的左（右）子树的节点数量，可将 前序遍历 划分为 [ 根节点 | 左子树 | 右子树 ]
+     * @param preorder
+     * @param inorder
+     * @return
+     */
+    public TreeNode buildTree(int[] preorder, int[] inorder) {
+        this.preOrder = preorder;
+        // 将中序存放在字典中
+        for (int i = 0; i < inorder.length; i++) {
+            dict.put(inorder[i], i);
+        }
+        return recur(0, 0, inorder.length - 1);
+    }
+
+    /**
+     * 重新建立二叉树
+     * @param root
+     * @param left
+     * @param right
+     * @return
+     */
+    public TreeNode recur(int root, int left, int right) {
+        if(left > right) return null;
+        // 前序序列中，0下标作为根节点
+        TreeNode node = new TreeNode(preOrder[root]);
+        // 查看根节点在中序遍历中的索引i
+        int i  = dict.get(preOrder[root]);
+        // 递归划分，重点就是这个划分区间。左子树的根为root+1,区间在left， i - 1
+        node.left = recur(root + 1, left, i - 1);
+        // 右子树的根为 root + (i - left) + 1，区间在 i + 1, right
+        node.right = recur(root + i - left + 1, i + 1, right);
+        return node;
+    }
+
+    public void postOrder(TreeNode node) {
+        if (node == null) {
+            return;
+        }
+        postOrder(node.left);
+        postOrder(node.right);
+        System.out.println(node.val);
+    }
+
+
+    public static void main(String[] args) {
+        int[] preorder = {3, 9, 20, 15, 7};
+        int[] inorder = {9, 3, 15, 20, 7};
+        TreeNode treeNode = new Offer7().buildTree(preorder, inorder);
+        new Offer7().postOrder(treeNode);
     }
 }
 ```
@@ -9159,34 +9042,82 @@ class Solution {
 
 ```java
 class CQueue {
-    Deque<Integer> inStack;
-    Deque<Integer> outStack;
+
+    LinkedList<Integer> inStack, outStack;
 
     public CQueue() {
-        inStack = new ArrayDeque<Integer>();
-        outStack = new ArrayDeque<Integer>();
+        // 进栈，用来保存进栈的数据
+        inStack = new LinkedList<>();
+		// 出栈，用来保存逆序的进栈
+        outStack = new LinkedList<>();
     }
-
+    
     public void appendTail(int value) {
-        inStack.push(value);
+        // 添加数据，只需要将数据添加到进栈尾中
+        inStack.addLast(value);
     }
-
+    
     public int deleteHead() {
-        if (outStack.isEmpty()) {
-            if (inStack.isEmpty()) {
-                return -1;
-            }
-            in2out();
+        // 先查出栈有没有数，有数，直接出就行
+        if(!outStack.isEmpty()){
+            return outStack.removeLast();
         }
-        return outStack.pop();
-    }
-
-    private void in2out() {
-        while (!inStack.isEmpty()) {
-            outStack.push(inStack.pop());
+        if(inStack.isEmpty()) {
+            return -1;
         }
+        // 进栈不为空，将进栈的数据逆序存放在出栈中
+        while(!inStack.isEmpty()){
+            outStack.addLast(inStack.removeLast());
+        }
+        return outStack.removeLast();
     }
 }
+
+/**
+ * Your CQueue object will be instantiated and called as such:
+ * CQueue obj = new CQueue();
+ * obj.appendTail(value);
+ * int param_2 = obj.deleteHead();
+ */
+```
+
+#### **剑指 Offer 10-1. 斐波那契数列**
+
+**题目：** 写一个函数，输入 n ，求斐波那契（Fibonacci）数列的第 n 项（即 F(N)）。斐波那契数列的定义如下：
+
+```
+F(0) = 0,   F(1) = 1
+F(N) = F(N - 1) + F(N - 2), 其中 N > 1.
+```
+
+**实例：**
+
+```
+输入：n = 2
+输出：1
+```
+
+**题解：** 
+```java
+
+```
+
+#### **剑指 Offer 10- II. 青蛙跳台阶问题**
+
+**题目：** 输入一颗二叉搜索树，将该二叉搜索树转换成一个排序的循环双链表。要求不能创建任何新的结。只能调整树中节点指针的指向。
+
+**题解：** 
+```java
+
+```
+
+#### **剑指 Offer 36. 二叉搜索树与双向链表**
+
+**题目：** 输入一颗二叉搜索树，将该二叉搜索树转换成一个排序的循环双链表。要求不能创建任何新的结。只能调整树中节点指针的指向。
+
+**题解：** 
+```java
+
 ```
 
 #### **剑指 Offer 11. 旋转数组的最小数字**
