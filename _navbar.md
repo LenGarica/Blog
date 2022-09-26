@@ -18,4 +18,3 @@
     * [锻炼记录](/other/self.md)
     * [影视记录](/other/movies.md)
     * [读书记录](/other/read.md)
-    * [马克思](/other/marx.md)

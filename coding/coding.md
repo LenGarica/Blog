@@ -9099,12 +9099,97 @@ F(N) = F(N - 1) + F(N - 2), 其中 N > 1.
 
 **题解：** 
 ```java
+package com.company.coding.java.chapterone.parteight;
 
+public class Offer10_1 {
+
+    /**
+     * 递归法
+     * 
+     * @param n
+     * @return
+     */
+    public int fib1(int n) {
+
+        if (n == 0 || n == 1){
+            return n;
+        }
+        return fib1(n - 1) + fib1(n - 2);
+    }
+
+
+    /**
+     * 记忆数组，傻缓存算法
+     * @param n
+     * @return
+     */
+    public int fib2(int n) {
+        if (n == 0 || n == 1){
+            return n;
+        }
+        int[] arrMemory = new int[n + 1];
+        return recursive(arrMemory, n);
+    }
+
+    /**
+     * 
+     * @param arr
+     * @param n
+     * @return
+     */
+    public int recursive(int[] arr, int n) {
+        if(n <= 1) {
+            return n;
+        }
+        // 如果缓存表中存在，直接返回
+        if(arr[n] != 0) {
+            return arr[n];
+        }
+        // 在递归中，将结果保存在缓存数组中
+        arr[n] = recursive(arr, n - 1) + recursive(arr, n - 2);
+        return arr[n];
+    }
+
+    /**
+     * 动态规划
+     * @param n
+     * @return
+     */
+    public int fib3(int n) {
+        if(n <= 1) return n;
+        int[] dp = new int[n + 1];
+        dp[0] = 0;
+        dp[1] = 1;
+        for (int i = 2; i <= n; i++) {
+            dp[i] = dp[i - 1] + dp[i - 2];
+        }
+        return dp[n];
+    }
+
+    /**
+     * 动态规划空间优化为O(1)
+     * @param n
+     * @return
+     */
+    public int fib4(int n) {
+        if(n <= 1) return n;
+        int[] dp = new int[2];
+        dp[0] = 0;
+        dp[1] = 1;
+        for (int i = 2; i <= n; i++) {
+            int sum = dp[0] + dp[1];
+            dp[0] = dp[1];
+            dp[1] = sum;
+        }
+        return dp[1];
+    }
+
+}
 ```
 
-#### **剑指 Offer 10- II. 青蛙跳台阶问题**
+#### **剑指 Offer 10- II. 青蛙跳台阶问题（爬楼梯）**
 
-**题目：** 输入一颗二叉搜索树，将该二叉搜索树转换成一个排序的循环双链表。要求不能创建任何新的结。只能调整树中节点指针的指向。
+**题目：**一只青蛙一次可以跳上1级台阶，也可以跳上2级台阶。求该青蛙跳上一个 n 级的台阶总共有多少种跳法。答案需要取模 1e9+7（1000000007），如计算初始结果为：1000000008，请返回 1。
 
 **题解：** 
 ```java
