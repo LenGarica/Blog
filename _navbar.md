@@ -12,3 +12,7 @@
     * [Hadoop](/bigData/hadoop/hadoop.md)
     * [Spark](/bigData/spark/spark.md)
     * [Flink](/bigData/flink/flink.md)
+* 其他
+    * [锻炼记录](/other/self.md)
+    * [影视记录](/other/movies.md)
+    * [读书记录](/other/read.md)
