@@ -6,13 +6,11 @@
 
 ## 二、博客内容说明
 
-文档涉及到Java Web、大数据和其他。
+文档涉及到算法刷题、Java Web和大数据。
 
 Java Web部分，分享一些自己在项目中，遇到的问题。
 
-大数据板块的内容是本科时候整理的，比较老，而且内容并不完善，以后更新了。
-
-其他板块是自己的生活小记录。
+大数据板块的内容是本科时候整理的，比较老，内容并不完善，只能以后工作用到再更新了。
 
 ## 三、博客搭建
 
@@ -32,12 +30,4 @@ Java Web部分，分享一些自己在项目中，遇到的问题。
 
 [分页导航插件](https://cdn.jsdelivr.net/npm/docsify-pagination/dist/docsify-pagination.min.js)
 
- [复制到剪贴板](https://cdn.jsdelivr.net/npm/docsify-copy-code/dist/docsify-copy-code.min.js)
-
-## 四、最后
-
-事总与人违，事总在人为。
-
-笔者深感自己挺失败的，年少无知，不懂得好好学习，十件事总是失败九件。
-
-但依然要心怀希望，砥砺前行。
+[复制到剪贴板](https://cdn.jsdelivr.net/npm/docsify-copy-code/dist/docsify-copy-code.min.js)
