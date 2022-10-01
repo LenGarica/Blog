@@ -6,8 +6,8 @@
     * [基于ruoyi-vue实现一些需求](/web/ruoyi/web.md)
     * [Spring Cloud代驾程序实现](/web/Driver.md)
 * Go
-    * [Go电商](/coding/ecom.md)
-    * [Go实现Redis](/coding/redis.md)
+    * [Go电商](/go/ecom.md)
+    * [Go实现Redis](/go/redis.md)
 * 大数据
     * [环境搭建](/bigData/base.md)
     * [Hadoop](/bigData/hadoop/hadoop.md)
