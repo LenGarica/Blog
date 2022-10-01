@@ -3,10 +3,11 @@
     * [基础算法](/coding/coding.md)
     * [大厂笔试](/coding/company.md)
 * JavaWeb
-    * [若依集成各种工具](/web/ruoyi/web.md)
-    * [redis实现草稿保存](/web/Redis.md)
-    * [Camunda工作流](/web/Camunda.md)
-    * [延迟消息](/web/RabbitMq.md)
+    * [基于ruoyi-vue实现一些需求](/web/ruoyi/web.md)
+    * [Spring Cloud代驾程序实现](/web/Driver.md)
+* Go
+    * [Go电商](/coding/ecom.md)
+    * [Go实现Redis](/coding/redis.md)
 * 大数据
     * [环境搭建](/bigData/base.md)
     * [Hadoop](/bigData/hadoop/hadoop.md)
