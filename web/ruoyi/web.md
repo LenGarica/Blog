@@ -249,15 +249,29 @@ log.info("删除草稿文章 key=" + key + " 成功！");
 1. 定期轮询（数据库等）
 2. DelayQueue
 3. Timer
-4. ScheduledExecutorService
-5. 时间轮(kafka)
 6. RabbitMQ
 7. Quartz
 8. Redis Zset
-9. Koala
-10. JCronTab
-11. SchedulerX（阿里）
-12. 有赞延迟队列
+
+### 3. 死信队列实现消息延迟
+死信，顾名思义就是无法被消费的消息。producer 将消息投递到 broker 或者直接到queue 里了，consumer 从 queue 取出消息
+进行消费，但某些时候由于特定的原因导致 queue 中的某些消息无法被消费，这样的消息如果没有后续的处理，就变成了死信，有死信自然就有了死信队列。
+
+应用场景:为了保证订单业务的消息数据不丢失，比如说: 用户在商城下单成功并点击去支付后在指定时间未支付时自动失效，但是用户能够看到这条订单的支付失败记录。
+
+#### （1）死信的来源
+
+- 消息 TTL 过期
+- 队列达到最大长度(队列满了，无法再添加数据到 mq 中)
+- 消息被拒绝(basic.reject 或 basic.nack)并且 requeue=false
+
+#### （2）具体实现
+
+再使用消息队列的时候，应该先画一个消息传递图，这样能够是我们的思路很清晰。
+
+![](D:\blog\picture\dead_queue.png)
+
+
 
 ## 三、整合Camunda实现工作流
 
