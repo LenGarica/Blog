@@ -7,7 +7,8 @@
     * [Spring Cloud代驾程序实现](/web/Driver.md)
 * Go
     * [Go实现电商微服务](/go/ecom.md)
-    * [Go实现Redis](/go/Redis.md)
+    * [Go实现Redis](/go/redis.md)
+    * [Go实现分布式云存储](/go/cloudDisk.md)
 * 大数据
     * [环境搭建](/bigData/base.md)
     * [Hadoop](/bigData/hadoop/hadoop.md)
