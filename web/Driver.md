@@ -4100,9 +4100,9 @@ public class KeyExpiredListener extends KeyExpirationEventMessageListener {
 
 ```
 
-现在还有一种情况需要我们动脑子认真想想，比如说乘客下单成功之后，等待了5分钟，微信就闪退了。过了5分钟之后，他重新登录小程序。因为抢单缓存还没有被销毁，而且订单和账单记录也都在，小程序跳转到create_order.vue页面，重新从15分钟开始倒计时，但是倒计时过程中，抢单缓存会超时被销毁，同时订单和账单记录也都删除了。这时候乘客端小程序发来轮询请求，业务层发现倒计时还没结束，但是抢单缓存就没有了，说明有司机抢单了，于是就跳转到司乘同显页面，这明显是不对的。
+现在还有一种情况需要我们动脑子认真想想，比如说乘客下单成功之后，等待了5分钟，微信就闪退了。过了5分钟之后，他重新登录小程序。因为抢单缓存还没有被销毁，而且订单和账单记录也都在，小程序跳转到create_order.vue页面，重新从15分钟开始倒计时，但是倒计时过程中，抢单缓存会超时被销毁，**同时订单和账单记录也都删除了**。这时候乘客端小程序发来轮询请求，业务层发现倒计时还没结束，但是抢单缓存就没有了，说明有司机抢单了，于是就跳转到司乘同显页面，这明显是不对的。
 
-于是我们要改造OrderServiceImpl类中的代码，把抛出异常改成返回状态码为0，在移动端轮询的时候如果发现状态码是0，说明订单已经被关闭了。所以就弹出提示消息即可。
+于是我们要改造OrderServiceImpl类中的代码，把抛出异常改成返回状态码为0，在移动端轮询的时候如果发现状态码是0，说明订单已经被关闭了，关闭倒计时，弹出提示消息即可。
 
 ```java
 @Service
@@ -4123,7 +4123,2662 @@ public class OrderServiceImpl implements OrderService {
 
 ### 三、司机乘客同显
 
+根据orderId查询出属于某个司机或者乘客同显有关的订单信息。
+
+```sql
+<select id="searchOrderForMoveById" parameterType="Map" resultType="HashMap">
+    SELECT start_place AS startPlace,
+           start_place_location AS startPlaceLocation,
+           end_place AS endPlace,
+           end_place_location AS endPlaceLocation,
+           `status`
+    FROM tb_order
+    WHERE id = #{orderId}
+    <if test="customerId!=null">
+        AND customer_id = #{customerId}
+    </if>
+    <if test="driverId!=null">
+        AND driver_id = #{driverId}
+    </if>
+    LIMIT 1;
+</select>
+```
+
+提供的接口：
+
+```java
+@RestController
+@RequestMapping("/order")
+@Tag(name = "OrderController", description = "订单模块Web接口")
+public class OrderController {
+    @PostMapping("/searchOrderForMoveById")
+    @Operation(summary = "查询订单信息用于司乘同显功能")
+    public R searchOrderForMoveById(@RequestBody @Valid SearchOrderForMoveByIdForm form) {
+        Map param = BeanUtil.beanToMap(form);
+        HashMap map = orderService.searchOrderForMoveById(param);
+        return R.ok().put("result", map);
+    }
+}
+```
+
+#### 1.司机端最佳线路的显示
+
+因为司乘同显页面上要显示最佳线路，所以我们要对从腾讯位置服务中查询到的导航坐标解压缩，我们必须在页面中声明解压函数。腾讯位置服务返回的数据是一个坐标数组，要将坐标数组拿出来进行解压。就是以前我们写乘客端小程序`create_order.vue`页面的时候，用过这个函数，这里可以直接复制过来。
+
+解压算法：分两步
+
+- 将腾讯返回的polyline数组，从第三个数开始，f(n) = [f(n - 2) + f(n)] / 1 千万 进行处理
+- 然后再次遍历数组，从第一个数开始，每两个为一组放入新数组中，这样数组中每一组数据，就是经度和纬度。
+
+```js
+formatPolyline(polyline) {
+    let coors = polyline;
+    let pl = [];
+    //坐标解压（返回的点串坐标，通过前向差分进行压缩）
+    const kr = 1000000;
+    for (let i = 2; i < coors.length; i++) {
+        coors[i] = Number(coors[i - 2]) + Number(coors[i]) / kr;
+    }
+    //将解压后的坐标放入点串数组pl中
+    for (let i = 0; i < coors.length; i += 2) {
+        pl.push({
+            longitude: coors[i + 1],
+            latitude: coors[i]
+        });
+    }
+    return pl;
+},
+```
+
+#### 2.司机端地图终点的变化
+
+在`move.vue`页面中，声明计算最佳线路的函数。因为司机接单之后要赶往上车点，所以最佳线路的终点是上车点。如果开始代驾了，那么最佳线路的终点应该是订单的终点。所以在`calculateLine()`函数中，最佳线路的终点是随着订单状态改变，而发生变化的。
+
+```js
+calculateLine: function(ref) {
+    //如果还没有获得最新的定位，就不计算最佳线路
+    if (ref.latitude == 0 || ref.longitude == 0) {
+        return;
+    }
+    qqmapsdk.direction({
+        mode: ref.mode, //可选值：'driving'（驾车）、'walking'（步行）、'bicycling'（骑行），不填默认：'driving',可不填
+        //from参数不填默认当前地址
+        from: {
+            latitude: ref.latitude,
+            longitude: ref.longitude
+        },
+        to: {
+            latitude: ref.targetLatitude,
+            longitude: ref.targetLongitude
+        },
+        success: function(resp) {
+            let route = resp.result.routes[0];
+            let distance = route.distance;
+            let duration = route.duration;
+            let polyline = route.polyline;
+            ref.distance = Math.ceil((distance / 1000) * 10) / 10;
+            ref.duration = duration;
+
+            let points = ref.formatPolyline(polyline);
+
+            ref.polyline = [
+                {
+                    points: points,
+                    width: 6,
+                    color: '#05B473',
+                    arrowLine: true
+                }
+            ];
+            ref.markers = [
+                {
+                    id: 1,
+                    latitude: ref.latitude,
+                    longitude: ref.longitude,
+                    width: 35,
+                    height: 35,
+                    anchor: {
+                        x: 0.5,
+                        y: 0.5
+                    },
+                    iconPath: '../static/move/driver-icon.png'
+                }
+            ];
+        },
+        fail: function(error) {
+            console.log(error);
+        }
+    });
+}
+```
+
+#### 3.乘客端司机位置显示
+
+在司机赶往上车点的途中，这时候乘客的定位没什么用处，乘客端的司乘同显页面要根据司机的定位规划最佳线路。如果现在开始代驾了，这时候乘客的定位才会被用上，司乘同显根据乘客定位规划最佳线路。乘客端想要拿到司机的定位信息，司机端必须上传定位才可以。
+
+- 司机上传定位
+
+```java
+@Service
+public class DriverLocationServiceImpl implements DriverLocationService {
+    // 司机上传自己的定位，同时将位置保存在redis中。这里使用的就是普通的redis缓存，没有使用GEO
+    @Override
+    public void updateOrderLocationCache(Map param) {
+        long orderId = MapUtil.getLong(param, "orderId");
+        String latitude = MapUtil.getStr(param, "latitude");
+        String longitude = MapUtil.getStr(param, "longitude");
+        String location = latitude + "#" + longitude;
+        // 缓存 key : 订单编号， value ： 位置信息latitude + "#" + longitude， 过期时间： 10分钟
+        redisTemplate.opsForValue().set("order_location#" + orderId, location, 10, TimeUnit.MINUTES);
+    }
+
+    // 查询订单缓存
+    @Override
+    public HashMap searchOrderLocationCache(long orderId) {
+        // 根据key查询定位
+        Object obj = redisTemplate.opsForValue().get("order_location#" + orderId);
+        if (obj != null) {
+            String[] temp = obj.toString().split("#");
+            String latitude = temp[0];
+            String longitude = temp[1];
+            HashMap map = new HashMap() {{
+                put("latitude", latitude);
+                put("longitude", longitude);
+            }};
+            return map;
+        }
+        return null;
+    }
+}
+
+// 接口代码
+@RestController
+@RequestMapping("/driver/location")
+@Tag(name = "DriverLocationController", description = "司机定位服务Web接口")
+public class DriverLocationController {
+    @PostMapping("/updateOrderLocationCache")
+    @Operation(summary = "更新订单定位缓存")
+    @SaCheckLogin
+    public R updateOrderLocationCache(@RequestBody @Valid UpdateOrderLocationCacheForm form) {
+        driverLocationService.updateOrderLocationCache(form);
+        return R.ok();
+    }
+}
+
+// 前端代码
+wx.onLocationChange(function(resp) {
+    ……
+    if (workStatus == '开始接单') {
+        ……
+    }
+    else if (workStatus == '接客户') {
+        let executeOrder = uni.getStorageSync('executeOrder');
+        let orderId = executeOrder.id;
+        let data = {
+            orderId: orderId,
+            latitude: latitude,
+            longitude: longitude
+        };
+        uni.request({
+            url: `${baseUrl}/driver/location/updateOrderLocationCache`,
+            method: 'POST',
+            header: {
+                token: uni.getStorageSync('token')
+            },
+            data: data,
+            success: function(resp) {
+                if (resp.statusCode == 401) {
+                    uni.redirectTo({
+                        url: 'pages/login/login'
+                    });
+                } else if (resp.statusCode == 200 && resp.data.code == 200) {
+                    let data = resp.data;
+                    if (data.hasOwnProperty('token')) {
+                        let token = data.token;
+                        uni.setStorageSync('token', token);
+                    }
+                    console.log('订单定位更新成功');
+                } else {
+                    console.error('订单定位更新失败', resp.data);
+                }
+            },
+            fail: function(error) {
+                console.error('订单定位更新失败', error);
+            }
+        });
+    } else if (workStatus == '开始代驾') {
+        //TODO 每凑够20个定位就上传一次，减少服务器的压力
+    }
+    uni.$emit('updateLocation', location);
+});
+```
+
+- 乘客端获取司机位置
+
+```java
+@RestController
+@RequestMapping("/order/location")
+@Tag(name = "OrderLocationController", description = "订单定位服务Web接口")
+public class OrderLocationController {
+
+    @Resource
+    private OrderLocationService orderLocationService;
+
+    @PostMapping("/searchOrderLocationCache")
+    @Operation(summary = "查询订单定位缓存")
+    @SaCheckLogin
+    public R searchOrderLocationCache(@RequestBody @Valid SearchOrderLocationCacheForm form) {
+        HashMap map = orderLocationService.searchOrderLocationCache(form);
+        return R.ok().put("result", map);
+    }
+}
+```
+
+#### 4.到达代驾点确认
+
+司机赶到上车点之后，点击“到达上车点”按钮，乘客点击“司机到达”按钮，然后司乘同显的路线，就变成了乘客当前定位到代驾终点的最佳线路。
+
+```java
+@Data
+@Schema(description = "更新订单状态的表单")
+public class ArriveStartPlaceForm {
+    @NotNull(message = "orderId不能为空")
+    @Min(value = 1, message = "orderId不能小于1")
+    @Schema(description = "订单ID")
+    private Long orderId;
+
+    @NotNull(message = "driverId不能为空")
+    @Min(value = 1, message = "driverId不能小于1")
+    @Schema(description = "司机ID")
+    private Long driverId;
+
+}
+
+// 业务接口
+@RestController
+@RequestMapping("/order")
+@Tag(name = "OrderController", description = "订单模块Web接口")
+public class OrderController {
+    @PostMapping("/arriveStartPlace")
+    @Operation(summary = "司机到达上车点")
+    public R arriveStartPlace(@RequestBody @Valid ArriveStartPlaceForm form) {
+        Map param = BeanUtil.beanToMap(form);
+        param.put("status", 3);
+        int rows = orderService.arriveStartPlace(param);
+        return R.ok().put("rows", rows);
+    }
+}
+
+// feign接口
+@RestController
+@RequestMapping("/order")
+@Tag(name = "OrderController", description = "订单模块Web接口")
+public class OrderController {
+    @PostMapping("/arriveStartPlace")
+    @Operation(summary = "司机到达上车点")
+    @SaCheckLogin
+    public R arriveStartPlace(@RequestBody @Valid ArriveStartPlaceForm form) {
+        long driverId = StpUtil.getLoginIdAsLong();
+        form.setDriverId(driverId);
+        int rows = orderService.arriveStartPlace(form);
+        return R.ok().put("rows", rows);
+    }
+}
+```
+
+有一点需要必须清楚，乘客端点击了司机已到达，并不更改订单状态，因为上节课司机已到达的时候就已经把订单改成了3状态，为什么不是乘客确认司机已到达之后，再把订单改成3状态呢？这是因为司机到达上车点之后，有10分钟的免费等时。10分钟之后，乘客还没有到达上车点，代驾账单中就会出现等时费（1分钟1元钱）。有时候明明司机已经到达了上车点，但是乘客拖拖拉拉半个小时才到上车点，然后才点击司机已到达，于是等待的半个小时就成了免费的，因为没有确认司机已到达上车点，那就不算等时。
+
+乘客端点击确认司机已到达之后，并不会修改订单状态，修改Redis里面的标志位缓存。等到司机端点击开始代驾的时候，要确定Redis里面标志位的值为2，然后才能把订单更新成4状态
+
+status  ：  1等待接单，2已接单，3司机已到达，4开始代驾，5结束代驾，6未付款，7已付款，8订单已结束，9顾客撤单，10司机撤单，11事故关闭，12其他
+
+#### 5.本地app实现导航
+
+司机点击了开始代驾后，由于小程序总体积不能超过32MB，因此需要调用本地地图App。
+
+```js
+// 点击开始代驾按钮，调起app
+<view class="item" @tap="showNavigationHandle">
+    <image src="../../static/workbench/other-icon-1.png" 
+           mode="widthFix" 
+           class="location-icon"/>
+    <text class="location-text">定位导航</text>
+</view>
+
+showNavigationHandle: function() {
+    let that = this;
+    let latitude = null;
+    let longitude = null;
+    let destination = null;
+    if (that.workStatus == '接客户') {
+        latitude = Number(that.executeOrder.startPlaceLocation.latitude);
+        longitude = Number(that.executeOrder.startPlaceLocation.longitude);
+        destination = that.executeOrder.startPlace;
+    } else {
+        latitude = Number(that.executeOrder.endPlaceLocation.latitude);
+        longitude = Number(that.executeOrder.endPlaceLocation.longitude);
+        destination = that.executeOrder.endPlace;
+    }
+    //打开手机导航软件
+    that.map.openMapApp({
+        latitude: latitude,
+        longitude: longitude,
+        destination: destination
+    });
+},
+```
+
+### 四、搭建HBase
+
+代驾过程中，我们需要保存驾驶途中的GPS定位，将来我们计算代驾真实里程的时候，就需要用到这些坐标点。那么这些定位点保存在MySQL中可以吗？当然不行，MySQL单表记录超过两千万就卡的不行。那么保存在MongoDB中可以吗？也不行，因为MongoDB里面的条件查询真的是超级蹩脚，所以我们想要用复杂条件检索数据，那么你还是打消用MongoDB的念头吧。
+
+除了GPS定位数据之外，我们还要把代驾过程中的聊天对话的文字内容保存起来。这么看来，我们需要一个既能保存海量数据，又支持复杂条件检索的数据存储平台。那么HBase就再适合不过了。
+
+HBase是一个分布式，版本化，面向列的开源数据库，构建在 Apache Hadoop和 Apache  ZooKeeper之上。HBase是一个高可靠性、高性能、面向列、可伸缩的分布式存储系统，利用HBase技术可在廉价PC  Server上搭建起大规模结构化存储集群。HBase不同于一般的关系数据库，它是一个适合于非结构化数据存储的数据库，HBase基于列的而不是基于行的模式。
+
+#### 1.HBase的特点
+
+1. 海量数据存储，HBase中的表可以容纳上百亿行x上百万列的数据。
+2. 列式存储，HBase中的数据是基于列进行存储的，能够动态的增加和删除列。
+3. 准实时查询，HBase在海量的数据量下能够接近准实时的查询（百毫秒以内）
+4. 多版本，HBase中每一列的数据都有多个版本。
+5. 高可靠性，HBase中的数据存储于HDFS中且依赖于Zookeeper进行Master和RegionServer的协调管理。
+
+#### 2.Phoenix
+
+HBase的语法可读性差，复杂查询不方便。Phoenix是给HBase添加了一个语法表示层，允许我们用SQL语句读写HBase中的数据，可以做联机事务处理，拥有低延迟的特性，这就让我方便多了。Phoenix会把SQL编译成一系列的Hbase的scan操作，然后把scan结果生成标准的JDBC结果集，处理千万级行的数据也只用毫秒或秒级就搞定。而且Phoenix还支持MyBatis框架。
+
+#### 3.表结构
+
+- 创建逻辑库
+
+```sql
+CREATE SCHEMA hxds;
+USE hxds;
+```
+
+- 创建数据表
+
+接下来我们要创建`order_voice_text`、`order_monitoring`和`order_gps`数据表。
+
+其中`order_voice_text`表用于存放司乘对话内容的文字内容。
+
+| 序号 | 字段        | 类型    | 备注                          |
+| ---- | ----------- | ------- | ----------------------------- |
+| 1    | id          | BIGINT  | 主键                          |
+| 2    | uuid        | VARCHAR | 唯一标识                      |
+| 3    | order_id    | BIGINT  | 订单号                        |
+| 4    | record_file | VARCHAR | 保存文件名                    |
+| 5    | text        | VARCHAR | 文本内容                      |
+| 6    | label       | VARCHAR | 审核结果（normal）            |
+| 7    | suggestion  | VARCHAR | 后续建议（pass\block\review） |
+| 8    | keywords    | VARCHAR | 关键字                        |
+| 9    | create_time | DATE    | 创建日期时间                  |
+
+```sql
+CREATE TABLE hxds.order_voice_text(
+    "id" BIGINT NOT NULL PRIMARY KEY, 
+    "uuid" VARCHAR,
+    "order_id" BIGINT,
+    "record_file" VARCHAR,
+    "text" VARCHAR,
+    "label" VARCHAR,
+    "suggestion" VARCHAR,
+    "keywords" VARCHAR,
+    "create_time" DATE
+);
+
+
+CREATE SEQUENCE hxds.ovt_sequence START WITH 1 INCREMENT BY 1;
+
+CREATE INDEX ovt_index_1 ON hxds.order_voice_text("uuid");
+CREATE INDEX ovt_index_2 ON hxds.order_voice_text("order_id");
+CREATE INDEX ovt_index_3 ON hxds.order_voice_text("label");
+CREATE INDEX ovt_index_4 ON hxds.order_voice_text("suggestion");
+CREATE INDEX ovt_index_5 ON hxds.order_voice_text("create_time");
+```
+
+```java
+@Data
+public class OrderVoiceTextEntity {
+    private Long id;
+    private String uuid;
+    private Long orderId;
+    private String recordFile;
+    private String text;
+    private String label;
+    private String suggestion;
+    private String keywords;
+    private String createTime;
+}
+```
+
+`order_monitoring`表存储AI分析对话内容的安全评级结果。
+
+| 序号 | 字段        | 类型    | 备注               |
+| ---- | ----------- | ------- | ------------------ |
+| 1    | id          | BIGINT  | 主键               |
+| 2    | order_id    | BIGINT  | 订单号             |
+| 3    | status      | TINYINT | 状态               |
+| 4    | records     | INTEGER | 录音文件的数量     |
+| 5    | safety      | VARCHAR | 安全等级           |
+| 6    | reviews     | INTEGER | 需要人工审核的数量 |
+| 7    | alarm       | TINYINT | 是否报警           |
+| 8    | create_time | DATE    | 创建日期时间       |
+
+```sql
+CREATE TABLE hxds.order_monitoring
+(
+    "id"          BIGINT NOT NULL PRIMARY KEY,
+    "order_id"    BIGINT,
+    "status"      TINYINT,
+    "records"     INTEGER,
+    "safety"       VARCHAR,
+    "reviews"     INTEGER,
+    "alarm"       TINYINT,
+    "create_time" DATE
+);
+
+CREATE INDEX om_index_1 ON hxds.order_monitoring("order_id");
+CREATE INDEX om_index_2 ON hxds.order_monitoring("status");
+CREATE INDEX om_index_3 ON hxds.order_monitoring("safety");
+CREATE INDEX om_index_4 ON hxds.order_monitoring("reviews");
+CREATE INDEX om_index_5 ON hxds.order_monitoring("alarm");
+CREATE INDEX om_index_6 ON hxds.order_monitoring("create_time");
+
+CREATE SEQUENCE hxds.om_sequence START WITH 1 INCREMENT BY 1;
+```
+
+```java
+@Data
+public class OrderMonitoringEntity {
+    private Long id;
+    private Long orderId;
+    private Byte status;
+    private Integer records;
+    private String safety;
+    private Integer reviews;
+    private Byte alarm;
+    private String createTime;
+}
+```
+
+`order_gps`表保存的时候代驾过程中的GPS定位。
+
+| 序号 | 字段        | 类型    | 备注         |
+| ---- | ----------- | ------- | ------------ |
+| 1    | id          | BIGINT  | 主键         |
+| 2    | order_id    | BIGINT  | 订单号       |
+| 3    | driver_id   | BIGINT  | 司机编号     |
+| 4    | customer_id | BIGINT  | 乘客编号     |
+| 5    | latitude    | VARCHAR | 纬度         |
+| 6    | longitude   | VARCHAR | 经度         |
+| 7    | speed       | VARCHAR | 速度         |
+| 8    | create_time | DATE    | 创建日期时间 |
+
+```sql
+CREATE TABLE hxds.order_gps(
+    "id" BIGINT NOT NULL PRIMARY KEY, 
+    "order_id" BIGINT,
+    "driver_id" BIGINT,
+    "customer_id" BIGINT,
+    "latitude" VARCHAR,
+    "longitude" VARCHAR,
+    "speed" VARCHAR,
+    "create_time" DATE
+);
+
+CREATE SEQUENCE og_sequence START WITH 1 INCREMENT BY 1;
+
+CREATE INDEX og_index_1 ON hxds.order_gps("order_id");
+CREATE INDEX og_index_2 ON hxds.order_gps("driver_id");
+CREATE INDEX og_index_3 ON hxds.order_gps("customer_id");
+CREATE INDEX og_index_4 ON hxds.order_gps("create_time");
+```
+
+```java
+@Data
+public class OrderGpsEntity {
+    private Long id;
+    private Long orderId;
+    private Long driverId;
+    private Long customerId;
+    private String latitude;
+    private String longitude;
+    private String speed;
+    private String createTime;
+}
+```
+
+- yml中整合Phoenix
+
+```yml
+datasource:
+	driver-class-name: org.apache.phoenix.queryserver.client.Driver
+	url: jdbc:phoenix:thin:url=http://127.0.0.1:8765;serialization=PROTOBUF
+	type: com.alibaba.druid.pool.DruidDataSource
+	druid:
+		test-on-borrow: true
+		test-while-idle: true
+		max-active: 8
+		min-idle: 4
+```
+
+#### 4.司乘对话保存后端逻辑
+
+司乘聊天的文本，我们可以通过MyBatis框架保存到HBase里面。至于说司乘聊天的录音文件，我们可以保存到Minio里面。只要开始代驾，小程序就要录制司乘对话，直到代驾结束，才停止录音。
+
+```sql
+<insert id="insert" parameterType="com.example.hxds.nebula.db.pojo.OrderVoiceTextEntity">
+    UPSERT INTO hxds.order_voice_text("id", "uuid", "order_id", "record_file", "text", "create_time")
+    VALUES(NEXT VALUE FOR hxds.ovt_sequence, '${uuid}', #{orderId}, '${recordFile}', '${text}', NOW())
+</insert>
+```
+
+```java
+@Service
+@Slf4j
+public class MonitoringServiceImpl implements MonitoringService {
+    @Resource
+    private OrderVoiceTextDao orderVoiceTextDao;
+    
+    @Resource
+    private VoiceTextCheckTask voiceTextCheckTask;
+
+    @Value("${minio.endpoint}")
+    private String endpoint;
+
+    @Value("${minio.access-key}")
+    private String accessKey;
+
+    @Value("${minio.secret-key}")
+    private String secretKey;
+
+    @Override
+    @Transactional
+    public void monitoring(MultipartFile file, String name, String text) {
+        //把录音文件上传到Minio
+        try {
+            MinioClient client = new MinioClient.Builder().endpoint(endpoint).credentials(accessKey, secretKey).build();
+            client.putObject(
+                    PutObjectArgs.builder().bucket("hxds-record").object(name)
+                            .stream(file.getInputStream(), -1, 20971520)
+                            .contentType("audio/x-mpeg")
+                            .build());
+        } catch (Exception e) {
+            log.error("上传代驾录音文件失败", e);
+            throw new HxdsException("上传代驾录音文件失败");
+        }
+        
+        OrderVoiceTextEntity entity = new OrderVoiceTextEntity();
+        
+        //文件名格式例如:2156356656617-1.mp3，我们要解析出订单号
+        String[] temp = name.substring(0, name.indexOf(".mp3")).split("-");
+        Long orderId = Long.parseLong(temp[0]);
+
+        String uuid = IdUtil.simpleUUID();
+        entity.setUuid(uuid);
+        entity.setOrderId(orderId);
+        entity.setRecordFile(name);
+        entity.setText(text);
+        //把文稿保存到HBase
+        int rows = orderVoiceTextDao.insert(entity);
+        if (rows != 1) {
+            throw new HxdsException("保存录音文稿失败");
+        }
+
+        //执行文稿内容审查
+		voiceTextCheckTask.checkText(orderId,text,uuid);
+    }
+}
+```
+
+我们要对文字内容加以审核，看看对话的内容是否包含色情或者暴力的成分，我们要对聊天内容做一个安全评级。如果用人工去监视司机和乘客之间的对话，那成本可太高了，而且也雇不起那么多人，所以我们要用AI去监控对话的内容。
+
+腾讯云的数据万象服务为我们提供了图像、视频和文本内容的审核。就拿文本来说把，数据万象可以对用户上传的文本进行内容安全识别，能够做到识别准确率高、召回率高，多维度覆盖对内容识别的要求，并实时更新识别服务的识别标准和能力。
+
+1. 能够对文本文件进行多样化场景检测，精准识别文本中出现可能令人反感、不安全或不适宜的内容，有效降低内容违规风险与有害信息识别成本。
+2. 能够精准识别涉黄等有害内容，支持用户配置词库，打击自定义的违规文本。文本内容安全服务能检测内容的危险等级，对于高危部分直接过滤，对于可疑部分提交人工复审，从而节省识别人力，降低业务风险。
+3. 业务可用性不低于99.9%，专业团队7 × 24小时实时提供技术支持。
+4. 请求毫秒级响应，结果秒级返回，超低延迟助力业务“快人一步”。
+5. 多集群部署，每秒超万级并发，支持动态扩容，无需担心性能损耗。
+
+数据万象的文本审核计费规则：每1000个utf8编码计算为一条，每种场景单独计算，比如勾选鉴黄、广告两种场景，那么会计算为审核2次。
+
+调用数据万象接口审核文字内容，然后还要更新`order_monitoring`表中的记录，根据数据万象审核的结果更新订单的安全等级。这些操作都是需要消耗时间的，所以我们应该交给异步线程任务去做。
+
+```java
+@Component
+@Slf4j
+public class VoiceTextCheckTask {
+    @Value("${tencent.cloud.appId}")
+    private String appId;
+
+    @Value("${tencent.cloud.secretId}")
+    private String secretId;
+
+    @Value("${tencent.cloud.secretKey}")
+    private String secretKey;
+
+    @Value("${tencent.cloud.bucket-public}")
+    private String bucketPublic;
+
+    @Resource
+    private OrderVoiceTextDao orderVoiceTextDao;
+
+    @Resource
+    private OrderMonitoringDao orderMonitoringDao;
+
+    @Async
+    @Transactional
+    public void checkText(long orderId, String content, String uuid) {
+
+        String label = "Normal"; //审核结果
+        String suggestion = "Pass"; //后续建议
+        
+        //后续建议模板
+        HashMap<String, String> template = new HashMap() {{
+            put("0", "Pass");
+            put("1", "Block");
+            put("2", "Review");
+        }};
+
+        if (StrUtil.isNotBlank(content)) {
+            COSCredentials cred = new BasicCOSCredentials(secretId, secretKey);
+            Region region = new Region("ap-beijing");
+            ClientConfig clientConfig = new ClientConfig(region);
+            COSClient client = new COSClient(cred, clientConfig);
+            
+            // 这里是终点
+            TextAuditingRequest request = new TextAuditingRequest();
+            request.setBucketName(bucketPublic);
+            request.getInput().setContent(Base64.encode(content));
+            request.getConf().setDetectType("all");
+
+            TextAuditingResponse response = client.createAuditingTextJobs(request);
+            AuditingJobsDetail detail = response.getJobsDetail();
+            String state = detail.getState();
+            ArrayList keywords = new ArrayList();
+            if ("Success".equals(state)) {
+                label = detail.getLabel(); //检测结果
+                String result = detail.getResult(); //后续建议
+                suggestion = template.get(result);
+                List<SectionInfo> list = detail.getSectionList();   //违规关键词
+
+                for (SectionInfo info : list) {
+                    String keywords_1 = info.getPornInfo().getKeywords();
+                    String keywords_2 = info.getIllegalInfo().getKeywords();
+                    String keywords_3 = info.getAbuseInfo().getKeywords();
+                    if (keywords_1.length() > 0) {
+                        List temp = Arrays.asList(keywords_1.split(","));
+                        keywords.addAll(temp);
+                    }
+                    if (keywords_2.length() > 0) {
+                        List temp = Arrays.asList(keywords_2.split(","));
+                        keywords.addAll(temp);
+                    }
+                    if (keywords_3.length() > 0) {
+                        List temp = Arrays.asList(keywords_3.split(","));
+                        keywords.addAll(temp);
+                    }
+                }
+            }
+            Long id = orderVoiceTextDao.searchIdByUuid(uuid);
+            if (id == null) {
+                throw new HxdsException("没有找到代驾语音文本记录");
+            }
+            HashMap param = new HashMap();
+            param.put("id", id);
+            param.put("label", label);
+            param.put("suggestion", suggestion);
+            param.put("keywords", ArrayUtil.join(keywords.toArray(), ","));
+            
+            //更新数据表中该文本的审核结果
+            int rows = orderVoiceTextDao.updateCheckResult(param);
+            if (rows != 1) {
+                throw new HxdsException("更新内容检查结果失败");
+            }
+            log.debug("更新内容验证成功");
+            
+            //查询该订单有多少个录音文本和需要人工审核的文本
+            HashMap map = orderMonitoringDao.searchOrderRecordsAndReviews(orderId);
+            
+            id = MapUtil.getLong(map, "id");
+            Integer records = MapUtil.getInt(map, "records");
+            Integer reviews = MapUtil.getInt(map, "reviews");
+            OrderMonitoringEntity entity = new OrderMonitoringEntity();
+            entity.setId(id);
+            entity.setOrderId(orderId);
+            entity.setRecords(records + 1);
+            if (suggestion.equals("Review")) {
+                entity.setReviews(reviews + 1);
+            }
+            if (suggestion.equals("Block")) {
+                entity.setSafety("danger");
+            }
+            
+            //更新order_monitoring表中的记录
+            orderMonitoringDao.updateOrderMonitoring(entity);
+
+        }
+    }
+}
+```
 
 
 
+#### 5.司乘对话前端逻辑
 
+使用小程序的同声传译插件可以实现录音，并且把录音中的语音部分转换成文本。
+
+```js
+var plugin = requirePlugin("WechatSI")
+let manager = plugin.getRecordRecognitionManager()
+
+//开始录音的回调函数
+manager.onStart = function(res) {
+    console.log("成功开始录音识别", res)
+}
+
+//从语音中识别出文字，会执行该回调函数
+manager.onRecognize = function(res) {
+    console.log("current result", res.result)
+}
+
+//录音结束的回调函数
+manager.onStop = function(res) {
+    console.log("record file path", res.tempFilePath)
+    console.log("result", res.result)
+}
+
+//出现异常的回调函数
+manager.onError = function(res) {
+    console.error("error msg", res.msg)
+}
+
+//开始录音，并且识别中文语音内容
+manager.start({duration:30000, lang: "zh_CN"})
+
+// 在onload函数中，初始化录音管理器插件
+onLoad: function() {
+    let that = this;
+    if (!that.reviewAuth) {
+        ……
+        let recordManager = plugin.getRecordRecognitionManager(); //初始化录音管理器
+        recordManager.onRecognize = function(resp) {
+          
+        };
+        recordManager.onStop = function(resp) {
+            // console.log('record file path', resp.tempFilePath);
+            // console.log('result', resp.result);
+            if (that.workStatus == '开始代驾' && that.stopRecord == false) {
+                that.recordManager.start({ duration: 20 * 1000, lang: 'zh_CN' });
+            }
+
+            let tempFilePath = resp.tempFilePath;
+            //上传录音
+            that.recordNum += 1;
+            let data = {
+                name: `${that.executeOrder.id}-${that.recordNum}.mp3`,
+                text: resp.result
+            };
+            //console.log(data);
+            //upload上传文件函数封装在main.js文件中，大家可以自己去查阅
+            that.upload(that.url.uploadRecordFile, tempFilePath, data, function(resp) {
+                console.log('录音上传成功');
+            });
+        };
+        recordManager.onStart = function(resp) {
+            console.log('成功开始录音识别');
+            if (that.recordNum == 0) {
+                uni.vibrateLong({
+                    complete: function() {
+                        uni.showToast({
+                            icon: 'none',
+                            title: '请提示客户系上安全带！'
+                        });
+                    }
+                });
+            }
+        };
+        recordManager.onError = function(resp) {
+            console.error('录音识别故障', resp.msg);
+        };
+        that.recordManager = recordManager;
+      
+        that.ajax(that.url.searchDriverCurrentOrder,'POST',null, function(resp) {
+            ……
+            if (that.workStatus == '开始代驾') {
+                that.recordManager.start({ duration: 20 * 1000, lang: 'zh_CN' });
+            }
+        })
+        ……
+    }
+},
+   
+// 司机点击开始开始代驾按钮之后，就要开始录音，并且转换成文本内容。
+startDrivingHandle: function() {
+    let that = this;
+    uni.showModal({
+        title: '消息通知',
+        content: '您已经接到客户，现在开始代驾？',
+        success: function(resp) {
+            if (resp.confirm) {
+                that.stopRecord = false;
+                let data = {
+                    orderId: that.executeOrder.id,
+                    customerId: that.executeOrder.customerId,
+                    status: 4
+                };
+                that.ajax(that.url.updateOrderStatus, 'POST', data, function(resp) {
+                    that.workStatus = '开始代驾';
+                    uni.setStorageSync('workStatus', '开始代驾');
+                    //开始录音
+                    that.recordManager.start({ duration: 20 * 1000, lang: 'zh_CN' });
+                });
+            }
+        }
+    });
+},
+    
+// 结束代驾的时候，要更新订单状态，然后停止录音。
+endDrivingHandle: function() {
+    let that = this;
+    uni.showModal({
+        title: '消息通知',
+        content: '已经到达终点，现在结束代驾？',
+        success: function(resp) {
+            if (resp.confirm) {
+                let data = {
+                    orderId: that.executeOrder.id,
+                    customerId: that.executeOrder.customerId,
+                    status: 5
+                };
+                that.ajax(that.url.updateOrderStatus, 'POST', data, function(resp) {
+                    that.stopRecord = true;
+                    try {
+                        that.recordManager.stop(); //停止录音
+                        that.recordNum = 0;
+                        that.stopRecord = false;
+                        that.workStatus = '结束代驾';
+                        uni.setStorageSync('workStatus', '结束代驾');
+                        //页面发生跳转
+                        uni.navigateTo({
+                            url: '../../order/enter_fee/enter_fee?orderId=' + that.executeOrder.id + '&customerId=' + that.executeOrder.customerId
+                        });
+                    } catch (e) {
+                        console.error(e);
+                    }
+                });
+            }
+        }
+    });
+}
+
+```
+
+#### 6.保存GPS定位数据
+
+```sql
+<insert id="insert" parameterType="com.example.hxds.nebula.db.pojo.OrderGpsEntity">
+    UPSERT INTO hxds.order_gps("id", "order_id", "driver_id", "customer_id", "latitude", "longitude", "speed", "create_time")
+    VALUES(NEXT VALUE FOR hxds.og_sequence, ${orderId}, ${driverId}, ${customerId}, '${latitude}', '${longitude}', '${speed}', NOW())
+</insert>
+```
+
+```java
+@Data
+public class InsertOrderGpsVo extends OrderGpsEntity {
+    @NotNull(message = "orderId不能为空")
+    @Min(value = 1, message = "orderId不能小于1")
+    @Schema(description = "订单ID")
+    private Long orderId;
+
+    @NotNull(message = "driverId不能为空")
+    @Min(value = 1, message = "driverId不能小于1")
+    @Schema(description = "司机ID")
+    private Long driverId;
+
+    @NotNull(message = "customerId不能为空")
+    @Min(value = 1, message = "customerId不能小于1")
+    @Schema(description = "客户ID")
+    private Long customerId;
+
+
+    @NotBlank(message = "latitude不能为空")
+    @Pattern(regexp = "^(([1-8]\\d?)|([1-8]\\d))(\\.\\d{1,18})|90|0(\\.\\d{1,18})?$", message = "latitude内容不正确")
+    @Schema(description = "纬度")
+    private String latitude;
+
+    @NotBlank(message = "longitude不能为空")
+    @Pattern(regexp = "^(([1-9]\\d?)|(1[0-7]\\d))(\\.\\d{1,18})|180|0(\\.\\d{1,18})?$", message = "longitude内容不正确")
+    @Schema(description = "经度")
+    private String longitude;
+
+    @Schema(description = "速度")
+    private String speed;
+}
+
+@Data
+@Schema(description = "添加订单GPS记录的表单")
+public class InsertOrderGpsForm {
+    @NotEmpty(message = "list不能为空")
+    @Schema(description = "GPS数据")
+    private ArrayList<@Valid InsertOrderGpsVo> list;
+
+}
+```
+
+```java
+@Service
+public class OrderGpsServiceImpl implements OrderGpsService {
+    @Resource
+    private OrderGpsDao orderGpsDao;
+
+    @Override
+    @Transactional
+    public int insertOrderGps(ArrayList<InsertOrderGpsVo> list) {
+        int rows = 0;
+        for (OrderGpsEntity entity : list) {
+            rows += orderGpsDao.insert(entity);
+        }
+        return rows;
+    }
+}
+
+@RestController
+@RequestMapping("/order/gps")
+@Tag(name = "OrderGpsController", description = "订单GPS记录Web接口")
+public class OrderGpsController {
+    @Resource
+    private OrderGpsService orderGpsService;
+
+    @PostMapping("/insertOrderGps")
+    @Operation(summary = "添加订单GPS记录")
+    public R insertOrderGps(@RequestBody @Valid InsertOrderGpsForm form) {
+        int rows = orderGpsService.insertOrderGps(form.getList());
+        return R.ok().put("rows", rows);
+    }
+}
+```
+
+在`App.vue`页面`onLocationChange()`函数中，补充上传定位的代码。每凑够20个定位就上传一次，减少服务器的压力。
+
+```js
+//GPS定位变化就自动提交给后端
+wx.onLocationChange(function(resp) {
+	// 传给HBase时，需要单独将地址写在这里
+    let baseUrl = 'http://192.168.99.106:8201/hxds-driver';
+    if (workStatus == '开始接单') {
+        ……
+    } else if (workStatus == '开始代驾') {
+        let executeOrder = uni.getStorageSync('executeOrder');
+        if (executeOrder != null) {
+            gps.push({
+                orderId: executeOrder.id,
+                customerId: executeOrder.customerId,
+                latitude: latitude,
+                longitude: longitude,
+                speed: speed
+            });
+
+            //把GPS定位保存到HBase中，每凑够20个定位就上传一次，减少服务器的压力
+            if (gps.length == 20) {
+                uni.request({
+                    url: `${baseUrl}/order/gps/insertOrderGps`,
+                    method: 'POST',
+                    header: {
+                        token: uni.getStorageSync('token')
+                    },
+                    data: {
+                        list: gps
+                    },
+                    success: function(resp) {
+                        if (resp.statusCode == 401) {
+                            uni.redirectTo({
+                                url: '/pages/login/login'
+                            });
+                        } else if (resp.statusCode == 200 && resp.data.code == 200) {
+                            let data = resp.data;
+                            console.log("上传GPS成功");
+                        } else {
+                            console.error('保存GPS定位失败', resp.data);
+                        }
+                        gps.length = 0;
+                    },
+                    fail: function(error) {
+                        console.error('保存GPS定位失败', error);
+                    }
+                });
+            }
+        }
+    }
+
+    //触发自定义事件
+    uni.$emit('updateLocation', location);
+});
+
+```
+
+### 五、本章总结
+
+#### 1.利用AI对司乘对话内容安全评级
+
+上一章我们把司乘对话的文本只是保存到HBase里面，这一章咱们必须对司乘之间的对话内容做监控，毕竟咱们做的是商业项目，保障乘客人身安全是首要的任务。腾讯的数据万象服务可以审核文本内容，咱们要把这个功能利用起来。我们调用腾讯万象的接口，审核司乘之间的对话内容，看看是否包含色情或者暴力的成分。审核的结果咱们要更新到HBase数据表中。
+
+#### 2.利用大数据服务保存代驾途中GPS定位
+
+在订单执行的过程中，我们要把司机的GPS定位坐标保存到HBase里面，将来我们计算实际代驾里程的时候，把这些GPS坐标点连成线，就知道实际里程是多少了。当然了，这些GPS坐标点另有用处。我们在MIS系统的订单模块中，展开订单详情面板的时候，如果订单已经结束了，咱们要把代驾行进的线路标记出来，于是就用上了这些GPS坐标点。
+
+## 第六章 订单支付与分账
+
+### 一、分账规则
+
+在代驾账单中，包含了路桥费、停车费和其他费用，这些费用需要司机手动输入。当初在创建代驾订单的时候，我们就创建了账单记录。如果司机在下面的小程序页面输入相关费用之后，我们就可以计算订单的实际费用了，比如说统计实际里程、等时的时长、系统奖励，以及分账比例等等，这些都是需要调用各种子系统来获取的。
+
+账单生成时，需要先更新此条代驾记录的订单表和账单表。
+
+```java
+// 账单表的更新
+<update id="updateBillFee" parameterType="Map">
+    UPDATE tb_order_bill
+    SET total         = #{total},
+        mileage_fee   = #{mileageFee},
+        waiting_fee   = #{waitingFee},
+        toll_fee      = #{tollFee},
+        parking_fee   = #{parkingFee},
+        other_fee    = #{otherFee},
+        return_fee    = #{returnFee},
+        incentive_fee = #{incentiveFee}
+    WHERE order_id = #{orderId}
+</update>
+
+// 订单表的更新
+<update id="updateOrderMileageAndFee" parameterType="Map">
+    UPDATE tb_order
+    SET real_mileage   = #{realMileage},
+        return_mileage = #{returnMileage},
+        incentive_fee  = #{incentiveFee},
+        real_fee       = #{total}
+    WHERE id = #{orderId}
+</update>
+```
+
+更新后，建立分账记录，才能确定出微信渠道、平台、司机各自得多少钱。
+
+#### 1.规则
+
+微信支付平台对每一笔支付是要扣取渠道使用费的。交通出行类的APP，这个渠道费的扣点是0.6%，代驾平台的是对扣除掉渠道费的金额进行分账。代驾平台和司机的分账比例是变化的，具体的对应条件，我跟你具体说明一下。
+
+1. 如果该司机当天有差评，司机只能分账20%，平台抽成80%
+
+2. 如果付款金额小于50元
+    （a） 当天没有取消过订单，并且完成订大于等于25个，系统抽成18%
+
+    （b）当天取消订单小于3个，并且完成订单大于10个，系统抽成19%
+
+    （c）不满足上面两种情况，系统抽成20%
+
+3. 如果付款金额在50~100元之间
+    （a）当天没有取消过订单，并且完成订大于等于25个，系统抽成15%
+
+    （b）当天取消订单小于3个，并且完成订单大于10个，系统抽成16%
+
+    （c）不满足上面两种情况，系统抽成17%
+
+4. 如果付款金额在100元以上
+    （a）当天没有取消过订单，并且完成订大于等于25个，系统抽成12%
+
+    （b）当天取消订单小于3个，并且完成订单大于10个，系统抽成14%
+
+    （c）不满足上面两种情况，系统抽成15%
+
+API接口规范
+
+| 序号 | 参数         | 备注                        |
+| ---- | ------------ | --------------------------- |
+| 1    | systemIncome | 系统分账收入                |
+| 2    | driverIncome | 司机分账收入（扣除个税）    |
+| 3    | paymentRate  | 微信支付接口渠道费率        |
+| 4    | paymentFee   | 微信支付接口渠道费          |
+| 5    | taxRate      | 替司机代缴个税的税率（19%） |
+| 6    | taxFee       | 替司机代缴个税金额          |
+
+#### 2.分帐表
+
+我们先来了解一下`tb_order_profitsharing`表。
+
+| 字段名称      | 数据类型 | 非空 | 备注信息                   |
+| ------------- | -------- | ---- | -------------------------- |
+| id            | bigint   | Y    | 主键                       |
+| order_id      | bigint   | Y    | 订单ID                     |
+| rule_id       | bigint   | Y    | 规则ID                     |
+| amount_fee    | decimal  | Y    | 总费用                     |
+| payment_rate  | decimal  | Y    | 微信支付接口的渠道费率     |
+| payment_fee   | decimal  | Y    | 微信支付接口的渠道费       |
+| tax_rate      | decimal  | Y    | 为代驾司机代缴税率         |
+| tax_fee       | decimal  | Y    | 税率支出                   |
+| system_income | decimal  | Y    | 企业分账收入               |
+| driver_income | decimal  | Y    | 司机分账收入               |
+| status        | tinyint  | Y    | 分账状态，1未分账，2已分账 |
+
+添加分账时，status = 1。
+
+```xml
+<insert id="insert" parameterType="com.example.hxds.odr.db.pojo.OrderProfitsharingEntity">
+    INSERT INTO tb_order_profitsharing
+    SET order_id = #{orderId},
+        rule_id = #{ruleId},
+        amount_fee = #{amountFee},
+        payment_rate = #{paymentRate},
+        payment_fee = #{paymentFee},
+        tax_rate = #{taxRate},
+        tax_fee = #{taxFee},
+        system_income = #{systemIncome},
+        driver_income = #{driverIncome},
+        `status` = 1
+</insert>
+```
+
+#### 3.代价结束，更新账单
+
+```java
+@Service
+public class OrderBillServiceImpl implements OrderBillService {
+    ……
+        
+    @Override
+    @Transactional
+    @LcnTransaction
+    public int updateBillFee(Map param) {
+        //更新账单数据
+        int rows = orderBillDao.updateBillFee(param);
+        if (rows != 1) {
+            throw new HxdsException("更新账单费用详情失败");
+        }
+
+        //更新订单数据
+        rows = orderDao.updateOrderMileageAndFee(param);
+        if (rows != 1) {
+            throw new HxdsException("更新订单费用详情失败");
+        }
+
+        //添加分账单数据
+        OrderProfitsharingEntity entity = new OrderProfitsharingEntity();
+        entity.setOrderId(MapUtil.getLong(param, "orderId"));
+        entity.setRuleId(MapUtil.getLong(param, "ruleId"));
+        entity.setAmountFee(new BigDecimal((String) param.get("total")));
+        entity.setPaymentRate(new BigDecimal((String) param.get("paymentRate")));
+        entity.setPaymentFee(new BigDecimal((String) param.get("paymentFee")));
+        entity.setTaxRate(new BigDecimal((String) param.get("taxRate")));
+        entity.setTaxFee(new BigDecimal((String) param.get("taxFee")));
+        entity.setSystemIncome(new BigDecimal((String) param.get("systemIncome")));
+        entity.setDriverIncome(new BigDecimal((String) param.get("driverIncome")));
+        rows = profitsharingDao.insert(entity);
+        if (rows != 1) {
+            throw new HxdsException("添加分账记录失败");
+        }
+        return rows;
+    }
+}
+
+@Data
+@Schema(description = "更新账单的表单")
+public class UpdateBillFeeForm {
+
+    @NotBlank(message = "total不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "total内容不正确")
+    @Schema(description = "总金额")
+    private String total;
+
+    @NotBlank(message = "mileageFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "mileageFee内容不正确")
+    @Schema(description = "里程费")
+    private String mileageFee;
+
+    @NotBlank(message = "waitingFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "waitingFee内容不正确")
+    @Schema(description = "等时费")
+    private String waitingFee;
+
+    @NotBlank(message = "tollFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "tollFee内容不正确")
+    @Schema(description = "路桥费")
+    private String tollFee;
+
+    @NotBlank(message = "parkingFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "parkingFee内容不正确")
+    @Schema(description = "路桥费")
+    private String parkingFee;
+
+    @NotBlank(message = "otherFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "otherFee内容不正确")
+    @Schema(description = "其他费用")
+    private String otherFee;
+
+    @NotBlank(message = "returnFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "returnFee内容不正确")
+    @Schema(description = "返程费用")
+    private String returnFee;
+
+    @NotBlank(message = "incentiveFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "incentiveFee内容不正确")
+    @Schema(description = "系统奖励费用")
+    private String incentiveFee;
+
+    @NotNull(message = "orderId不能为空")
+    @Min(value = 1, message = "orderId不能小于1")
+    @Schema(description = "订单ID")
+    private Long orderId;
+
+    @NotBlank(message = "realMileage不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d+$|^0\\.\\d+$|^[1-9]\\d*$", message = "realMileage内容不正确")
+    @Schema(description = "代驾公里数")
+    private String realMileage;
+
+    @NotBlank(message = "returnMileage不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d+$|^0\\.\\d+$|^[1-9]\\d*$", message = "returnMileage内容不正确")
+    @Schema(description = "返程公里数")
+    private String returnMileage;
+
+    @NotNull(message = "ruleId不能为空")
+    @Min(value = 1, message = "ruleId不能小于1")
+    @Schema(description = "规则ID")
+    private Long ruleId;
+
+    @NotBlank(message = "paymentRate不能为空")
+    @Pattern(regexp = "^0\\.\\d+$|^[1-9]\\d*$|^0$", message = "paymentRate内容不正确")
+    @Schema(description = "支付手续费率")
+    private String paymentRate;
+
+    @NotBlank(message = "paymentFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "paymentFee内容不正确")
+    @Schema(description = "支付手续费")
+    private String paymentFee;
+
+    @NotBlank(message = "taxRate不能为空")
+    @Pattern(regexp = "^0\\.\\d+$|^[1-9]\\d*$|^0$", message = "taxRate内容不正确")
+    @Schema(description = "代缴个税费率")
+    private String taxRate;
+
+    @NotBlank(message = "taxFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "taxFee内容不正确")
+    @Schema(description = "代缴个税")
+    private String taxFee;
+
+    @NotBlank(message = "systemIncome不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "systemIncome内容不正确")
+    @Schema(description = "代驾系统分账收入")
+    private String systemIncome;
+
+    @NotBlank(message = "driverIncome不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "driverIncome内容不正确")
+    @Schema(description = "司机分账收入")
+    private String driverIncome;
+
+}
+
+@RestController
+@RequestMapping("/bill")
+@Tag(name = "OrderBillController", description = "订单费用账单Web接口")
+public class OrderBillController {
+    @Resource
+    private OrderBillService orderBillService;
+    
+    @PostMapping("/updateBillFee")
+    @Operation(summary = "更新订单账单费用")
+    public R updateBillFee(@RequestBody @Valid UpdateBillFeeForm form) {
+        Map param = BeanUtil.beanToMap(form);
+        int rows = orderBillService.updateBillFee(param);
+        return R.ok().put("rows", rows);
+    }
+}
+```
+
+### 二、里程与费用计算
+
+#### 1.实际代驾里程计算
+
+需要把HBase中该订单的GPS坐标取出来，然后把这些GPS坐标点连成线，就能计算出实际里程了。因为要计算GPS坐标点之间的距离，所以我们需要声明一个工具类。在`com.example.hxds.nebula.util`包中创建`LocationUtil.java`类。
+
+```java
+public class LocationUtil {
+    private final static double EARTH_RADIUS = 6378.137;//地球半径
+
+    private static double rad(double d) {
+        return d * Math.PI / 180.0;
+    }
+
+    /**
+     * 计算两点间距离
+     *
+     * @return double 距离 单位公里,精确到米
+     */
+    public static double getDistance(double lat1, double lng1, double lat2, double lng2) {
+        double radLat1 = rad(lat1);
+        double radLat2 = rad(lat2);
+        double a = radLat1 - radLat2;
+        double b = rad(lng1) - rad(lng2);
+        double s = 2 * Math.asin(Math.sqrt(Math.pow(Math.sin(a / 2), 2) +
+                Math.cos(radLat1) * Math.cos(radLat2) * Math.pow(Math.sin(b / 2), 2)));
+        s = s * EARTH_RADIUS;
+        s = new BigDecimal(s).setScale(3, RoundingMode.HALF_UP).doubleValue();
+        return s;
+    }
+}
+```
+
+代驾里程计算方法
+
+```java
+@Service
+public class OrderGpsServiceImpl implements OrderGpsService {
+    ……
+        
+    @Override
+    public String calculateOrderMileage(long orderId) {
+        ArrayList<HashMap> list = orderGpsDao.searchOrderAllGps(orderId);
+        double mileage = 0;
+        for (int i = 0; i < list.size(); i++) {
+            if (i != list.size() - 1) {
+                HashMap map_1 = list.get(i);
+                HashMap map_2 = list.get(i+1);
+                double latitude_1 = MapUtil.getDouble(map_1, "latitude");
+                double longitude_1 = MapUtil.getDouble(map_1, "longitude");
+                double latitude_2 = MapUtil.getDouble(map_2, "latitude");
+                double longitude_2 = MapUtil.getDouble(map_2, "longitude");
+                double distance = LocationUtil.getDistance(latitude_1, longitude_1, latitude_2, longitude_2);
+                mileage += distance;
+            }
+        }
+        return mileage + "";
+    }
+}
+```
+
+#### 2.代驾费计算
+
+- 计费标准
+
+1. 代驾默认起步里程是8公里，收费根据时间段不同也有所调整。超出8公里的部分，每公里3.5元。
+    | 时间段 | 基础里程 | 收费 |
+    | — | — | — |
+    | 06:00 - 22:00 | 8公里 | 35元 |
+    | 22:00 - 23:00 | 8公里 | 50元 |
+    | 23:00 - 00:00（次日） | 8公里 | 65元 |
+    | 00:00 - 06:00 | 8公里 | 85元 |
+2. 默认免费等时额度为10分钟，超出部分1元/分钟，等时费最高180元封顶。
+3. 如果实际代驾里程不超过8公里，不收取返程费。超过8公里，则收取返程费，返程费 = 实际代驾里程 × 1.0元
+
+| 序号 | 参数名称           | 备注信息                               |
+| ---- | ------------------ | -------------------------------------- |
+| 1    | amount             | 代驾费用（不包含停车费、路桥费等）     |
+| 2    | mileageFee         | 里程费                                 |
+| 3    | returnFee          | 返程费                                 |
+| 4    | waitingFee         | 等时费                                 |
+| 5    | returnMileage      | 返程里程                               |
+| 6    | baseReturnMileage  | 返程里程基数（8公里）                  |
+| 7    | exceedReturnPrice  | 返程里程收费价格（1元/公里）           |
+| 8    | baseMinute         | 等时基数（10分钟）                     |
+| 9    | exceedMinutePrice  | 等时基数外收费价格（1元/分钟）         |
+| 10   | baseMileagePrice   | 代驾基础费（35-85元）                  |
+| 11   | baseMileage        | 代驾基础里程（8公里）                  |
+| 12   | exceedMileagePrice | 代驾基础里程之外收费价格（3.5元/公里） |
+
+- 司机奖励费用
+
+代驾平台对司机的奖励规则如下，如果当天完成代驾30单以上，每笔订单再补贴5元。代驾平台的补贴是直接发放到司机钱包里面，到时候我们修改司机钱包的余额，并且还要添加一条充值记录。
+
+| 时间段                | 完成订单 | 平台奖励 |
+| --------------------- | -------- | -------- |
+| 06:00 - 18:00         | 10个     | 2元/单   |
+| 18:00 - 23:00         | 5个      | 3元/单   |
+| 23:00 - 00:00（次日） | 5个      | 2元/单   |
+| 00:00 - 06:00         | 5个      | 2元/单   |
+
+| 序号 | 参数名称     | 备注信息 |
+| ---- | ------------ | -------- |
+| 1    | incentiveFee | 奖励费   |
+
+- 计算代驾费用的表单
+
+```java
+@Data
+@Schema(description = "计算代驾费用的表单")
+public class CalculateOrderChargeForm {
+
+    @Schema(description = "代驾公里数")
+    private String mileage;
+
+    @Schema(description = "代驾开始时间")
+    private String time;
+
+    @Schema(description = "等时分钟")
+    private Integer minute;
+}
+```
+
+- 计算奖励的表单
+
+```java
+@Data
+@Schema(description = "计算系统奖励的表单")
+public class CalculateIncentiveFeeForm {
+
+    @Schema(description = "司机ID")
+    private long driverId;
+
+    @NotBlank(message = "acceptTime不能为空")
+    @Pattern(regexp = "^((((1[6-9]|[2-9]\\d)\\d{2})-(0?[13578]|1[02])-(0?[1-9]|[12]\\d|3[01]))|(((1[6-9]|[2-9]\\d)\\d{2})-(0?[13456789]|1[012])-(0?[1-9]|[12]\\d|30))|(((1[6-9]|[2-9]\\d)\\d{2})-0?2-(0?[1-9]|1\\d|2[0-8]))|(((1[6-9]|[2-9]\\d)(0[48]|[2468][048]|[13579][26])|((16|[2468][048]|[3579][26])00))-0?2-29-))\\s(20|21|22|23|[0-1]\\d):[0-5]\\d:[0-5]\\d$",
+            message = "acceptTime内容不正确")
+    @Schema(description = "接单时间")
+    private String acceptTime;
+}
+```
+
+- 计算订单分账的表单
+
+```
+@Data
+@Schema(description = "计算订单分账的表单")
+public class CalculateProfitsharingForm {
+
+    @Schema(description = "订单ID")
+    private Long orderId;
+
+    @Schema(description = "待分账费用")
+    private String amount;
+}
+```
+
+- 更新订单账单费用的表单
+
+```java
+@Data
+@Schema(description = "更新订单账单费用的表单")
+public class UpdateBillFeeForm {
+
+    @Schema(description = "总金额")
+    private String total;
+
+    @Schema(description = "里程费")
+    private String mileageFee;
+
+    @Schema(description = "等时费")
+    private String waitingFee;
+
+    @NotBlank(message = "tollFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "tollFee内容不正确")
+    @Schema(description = "路桥费")
+    private String tollFee;
+
+    @NotBlank(message = "parkingFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "parkingFee内容不正确")
+    @Schema(description = "路桥费")
+    private String parkingFee;
+
+    @NotBlank(message = "otherFee不能为空")
+    @Pattern(regexp = "^[1-9]\\d*\\.\\d{1,2}$|^0\\.\\d{1,2}$|^[1-9]\\d*$", message = "otherFee内容不正确")
+    @Schema(description = "其他费用")
+    private String otherFee;
+
+    @Schema(description = "返程费用")
+    private String returnFee;
+
+    @Schema(description = "系统奖励费用")
+    private String incentiveFee;
+
+    @NotNull(message = "orderId不能为空")
+    @Min(value = 1, message = "orderId不能小于1")
+    @Schema(description = "订单ID")
+    private Long orderId;
+
+    @Schema(description = "司机ID")
+    private Long driverId;
+
+    @Schema(description = "代驾公里数")
+    private String realMileage;
+
+    @Schema(description = "返程公里数")
+    private String returnMileage;
+
+    @Schema(description = "规则ID")
+    private Long ruleId;
+
+    @Schema(description = "支付手续费率")
+    private String paymentRate;
+
+    @Schema(description = "支付手续费")
+    private String paymentFee;
+
+    @Schema(description = "代缴个税费率")
+    private String taxRate;
+
+    @Schema(description = "代缴个税")
+    private String taxFee;
+
+    @Schema(description = "代驾系统分账收入")
+    private String systemIncome;
+
+    @Schema(description = "司机分账收入")
+    private String driverIncome;
+
+}
+```
+
+- 整体业务逻辑
+
+```java
+@Service
+public class OrderServiceImpl implements OrderService {
+        
+    @Override
+    @Transactional
+    @LcnTransaction
+    public int updateOrderBill(UpdateBillFeeForm form) {
+        /*
+         * 1.判断司机是否关联该订单
+         */
+        ValidDriverOwnOrderForm form_1 = new ValidDriverOwnOrderForm();
+        form_1.setOrderId(form.getOrderId());
+        form_1.setDriverId(form.getDriverId());
+        R r = odrServiceApi.validDriverOwnOrder(form_1);
+        boolean bool = MapUtil.getBool(r, "result");
+        if (!bool) {
+            throw new HxdsException("司机未关联该订单");
+        }
+        /*
+         * 2.计算订单里程数据
+         */
+        CalculateOrderMileageForm form_2 = new CalculateOrderMileageForm();
+        form_2.setOrderId(form.getOrderId());
+        r = nebulaServiceApi.calculateOrderMileage(form_2);
+        String mileage = (String) r.get("result");
+        mileage=NumberUtil.div(mileage,"1000",1,RoundingMode.CEILING).toString();
+
+        /*
+         * 3.查询订单消息
+         */
+        SearchSettlementNeedDataForm form_3 = new SearchSettlementNeedDataForm();
+        form_3.setOrderId(form.getOrderId());
+        r = odrServiceApi.searchSettlementNeedData(form_3);
+        HashMap map = (HashMap) r.get("result");
+        String acceptTime = MapUtil.getStr(map, "acceptTime");
+        String startTime = MapUtil.getStr(map, "startTime");
+        int waitingMinute = MapUtil.getInt(map, "waitingMinute");
+        String favourFee = MapUtil.getStr(map, "favourFee");
+
+        /*
+         * 4.计算代驾费
+         */
+        CalculateOrderChargeForm form_4 = new CalculateOrderChargeForm();
+        form_4.setMileage(mileage);
+        form_4.setTime(startTime.split(" ")[1]);
+        form_4.setMinute(waitingMinute);
+        r = ruleServiceApi.calculateOrderCharge(form_4);
+        map = (HashMap) r.get("result");
+        String mileageFee = MapUtil.getStr(map, "mileageFee");
+        String returnFee = MapUtil.getStr(map, "returnFee");
+        String waitingFee = MapUtil.getStr(map, "waitingFee");
+        String amount = MapUtil.getStr(map, "amount");
+        String returnMileage = MapUtil.getStr(map, "returnMileage");
+
+        /*
+         * 5.计算系统奖励费用
+         */
+        CalculateIncentiveFeeForm form_5 = new CalculateIncentiveFeeForm();
+        form_5.setDriverId(form.getDriverId());
+        form_5.setAcceptTime(acceptTime);
+        r = ruleServiceApi.calculateIncentiveFee(form_5);
+        String incentiveFee = (String) r.get("result");
+
+
+        form.setMileageFee(mileageFee);
+        form.setReturnFee(returnFee);
+        form.setWaitingFee(waitingFee);
+        form.setIncentiveFee(incentiveFee);
+        form.setRealMileage(mileage);
+        form.setReturnMileage(returnMileage);
+        //计算总费用
+        String total = NumberUtil.add(amount, form.getTollFee(), form.getParkingFee(), form.getOtherFee(), favourFee).toString();
+        form.setTotal(total);
+
+        /*
+         * 6.计算分账数据
+         */
+        CalculateProfitsharingForm form_6 = new CalculateProfitsharingForm();
+        form_6.setOrderId(form.getOrderId());
+        form_6.setAmount(total);
+        r = ruleServiceApi.calculateProfitsharing(form_6);
+        map = (HashMap) r.get("result");
+        long ruleId = MapUtil.getLong(map, "ruleId");
+        String systemIncome = MapUtil.getStr(map, "systemIncome");
+        String driverIncome = MapUtil.getStr(map, "driverIncome");
+        String paymentRate = MapUtil.getStr(map, "paymentRate");
+        String paymentFee = MapUtil.getStr(map, "paymentFee");
+        String taxRate = MapUtil.getStr(map, "taxRate");
+        String taxFee = MapUtil.getStr(map, "taxFee");
+        form.setRuleId(ruleId);
+        form.setPaymentRate(paymentRate);
+        form.setPaymentFee(paymentFee);
+        form.setTaxRate(taxRate);
+        form.setTaxFee(taxFee);
+        form.setSystemIncome(systemIncome);
+        form.setDriverIncome(driverIncome);
+
+        /*
+         * 7.更新代驾费账单数据
+         */
+        r = odrServiceApi.updateBillFee(form);
+        int rows = MapUtil.getInt(r, "rows");
+        return rows;
+    }
+}
+```
+
+- 路桥费、停车费、其他费用由司机手动添加
+
+添加完毕后，司机点击发送订单给乘客，然后乘客需要付款。
+
+### 三、微信支付
+
+乘客端小程序收到账单通知消息之后，跳转到`order.vue`页面。显示账单的各项数据，例如，起点、终点、订单号、下单时间、司机信息、基础费用、额外费用、总费用等内容。
+
+```xml
+<select id="searchOrderById" parameterType="Map" resultType="HashMap">
+    SELECT CAST(o.id AS CHAR) AS id,
+           CAST(o.driver_id AS CHAR) AS driverId,
+           CAST(o.customer_id AS CHAR) AS customerId,
+           o.start_place AS startPlace,
+           o.start_place_location AS startPlaceLocation,
+           o.end_place AS endPlace,
+           o.end_place_location AS endPlaceLocation,
+           CAST(b.total AS CHAR) AS total,
+           CAST(b.real_pay AS CHAR) AS realPay,
+           CAST(b.mileage_fee AS CHAR) AS mileageFee,
+           CAST(o.favour_fee AS CHAR) AS favourFee,
+           CAST(o.incentive_fee AS CHAR) AS incentiveFee,
+           CAST(b.waiting_fee AS CHAR) AS waitingFee,
+           CAST(b.return_fee AS CHAR) AS returnFee,
+           CAST(b.parking_fee AS CHAR) AS parkingFee,
+           CAST(b.toll_fee AS CHAR) AS tollFee,
+           CAST(b.other_fee AS CHAR) AS otherFee,
+           CAST(b.voucher_fee AS CHAR) AS voucherFee,
+           CAST(o.real_mileage AS CHAR) AS realMileage,
+           o.waiting_minute AS waitingMinute,
+           b.base_mileage AS baseMileage,
+           CAST(b.base_mileage_price AS CHAR) AS baseMileagePrice,
+           CAST(b.exceed_mileage_price AS CHAR) AS exceedMileagePrice,
+           b.base_minute AS baseMinute,
+           CAST(b.exceed_minute_price AS CHAR) AS exceedMinutePrice,
+           b.base_return_mileage AS baseReturnMileage,
+           CAST(b.exceed_return_price AS CHAR) AS exceedReturnPrice,
+           CAST(o.return_mileage AS CHAR) AS returnMileage,
+           o.car_plate AS carPlate,
+           o.car_type AS carType,
+           o.status,
+           DATE_FORMAT(o.create_time, '%Y-%m-%d %H:%i:%s') AS createTime
+    FROM tb_order o
+    JOIN tb_order_bill b ON o.id = b.order_id
+    WHERE o.id = #{orderId}
+    <if test="driverId!=null">
+        AND driver_id = #{driverId}
+    </if>
+    <if test="customerId!=null">
+        AND customer_id = #{customerId}
+    </if>
+</select>
+```
+
+#### 1.支付账单的创建
+
+如果乘客想要付款，需要先创建微信支付账单。但是创建微信支付账单的流程一点也不简单，比如乘客使用了代金券，咱们就要先验证代金券是否有效，然后扣减支付金额，更新账单表记录。等到创建了微信支付账单之后，我们还要把预支付ID（PrepayId）更新到订单表中。
+
+**代金券`tb_voucher`数据表的结构：**
+
+| **段**      | **类型** | **非空** | **备注**                                                     |
+| ----------- | -------- | -------- | ------------------------------------------------------------ |
+| id          | bigint   | True     | 主键                                                         |
+| uuid        | varchar  | True     | UUID                                                         |
+| name        | varchar  | True     | 代金券标题                                                   |
+| remark      | varchar  | False    | 描述文字                                                     |
+| tag         | varchar  | False    | 代金券标签，例如新人专用                                     |
+| total_quota | int      | True     | 代金券数量，如果是0，则是无限量                              |
+| take_count  | int      | True     | 实际领取数量                                                 |
+| used_count  | int      | True     | 已经使用的数量                                               |
+| discount    | decimal  | True     | 代金券面额                                                   |
+| with_amount | decimal  | True     | 最少消费金额才能使用代金券                                   |
+| type        | tinyint  | True     | 代金券赠送类型，如果是1则通用券，用户领取；如果是2，则是注册赠券 |
+| limit_quota | smallint | True     | 用户领券限制数量，如果是0，则是不限制；默认是1，限领一张     |
+| status      | tinyint  | True     | 代金券状态，如果是1则是正常可用；如果是2则是过期; 如果是3则是下架 |
+| time_type   | tinyint  | False    | 有效时间限制，如果是1，则基于领取时间的有效天数days；如果是2，则start_time和end_time是优惠券有效期； |
+| days        | smallint | False    | 基于领取时间的有效天数days                                   |
+| start_time  | datetime | False    | 代金券开始时间                                               |
+| end_time    | datetime | False    | 代金券结束时间                                               |
+| create_time | datetime | True     | 创建时间                                                     |
+
+至于哪些用户领取了代金券，我们要记录下来，
+
+**`tb_voucher_customer`表结构**
+
+| **字段**    | **类型** | **非空** | **备注**                                                     |
+| ----------- | -------- | -------- | ------------------------------------------------------------ |
+| id          | bigint   | True     | 主键                                                         |
+| customer_id | bigint   | True     | 客户ID                                                       |
+| voucher_id  | bigint   | True     | 代金券ID                                                     |
+| status      | tinyint  | True     | 使用状态, 如果是1则未使用；如果是2则已使用；如果是3则已过期；如果是4则已经下架； |
+| used_time   | datetime | False    | 使用代金券的时间                                             |
+| start_time  | datetime | False    | 有效期开始时间                                               |
+| end_time    | datetime | False    | 有效期截至时间                                               |
+| order_id    | bigint   | False    | 订单ID                                                       |
+| create_time | datetime | True     | 创建时间                                                     |
+
+**创建微信订单的业务逻辑**
+
+```java
+@Service
+@Slf4j
+public class OrderServiceImpl implements OrderService {
+    @Resource
+    private OdrServiceApi odrServiceApi;
+
+    @Resource
+    private VhrServiceApi vhrServiceApi;
+
+    @Resource
+    private CstServiceApi cstServiceApi;
+
+    @Resource
+    private DrServiceApi drServiceApi;
+
+    @Resource
+    private MyWXPayConfig myWXPayConfig;
+    
+    @Override
+    @Transactional
+    @LcnTransaction
+    public HashMap createWxPayment(long orderId, long customerId, Long voucherId) {
+        /*
+         * 1.先查询订单是否为6状态，其他状态都不可以生成支付订单
+         */
+        ValidCanPayOrderForm form_1 = new ValidCanPayOrderForm();
+        form_1.setOrderId(orderId);
+        form_1.setCustomerId(customerId);
+        R r = odrServiceApi.validCanPayOrder(form_1);
+        HashMap map = (HashMap) r.get("result");
+        String amount = MapUtil.getStr(map, "realFee");
+        String uuid = MapUtil.getStr(map, "uuid");
+        long driverId = MapUtil.getLong(map, "driverId");
+        String discount = "0.00";
+        if (voucherId != null) {
+            /*
+             * 2.查询代金券是否可以使用，并绑定
+             */
+            UseVoucherForm form_2 = new UseVoucherForm();
+            form_2.setCustomerId(customerId);
+            form_2.setVoucherId(voucherId);
+            form_2.setOrderId(orderId);
+            form_2.setAmount(amount);
+            r = vhrServiceApi.useVoucher(form_2);
+            discount = MapUtil.getStr(r, "result");
+        }
+        if (new BigDecimal(amount).compareTo(new BigDecimal(discount)) == -1) {
+            throw new HxdsException("总金额不能小于优惠劵面额");
+        }
+        /*
+         * 3.修改实付金额
+         */
+        amount = NumberUtil.sub(amount, discount).toString();
+        UpdateBillPaymentForm form_3 = new UpdateBillPaymentForm();
+        form_3.setOrderId(orderId);
+        form_3.setRealPay(amount);
+        form_3.setVoucherFee(discount);
+        odrServiceApi.updateBillPayment(form_3);
+
+        /*
+         * 4.查询用户的OpenID字符串
+         */
+        SearchCustomerOpenIdForm form_4 = new SearchCustomerOpenIdForm();
+        form_4.setCustomerId(customerId);
+        r = cstServiceApi.searchCustomerOpenId(form_4);
+        String customerOpenId = MapUtil.getStr(r, "result");
+
+        /*
+         * 5.查询司机的OpenId字符串
+         */
+        SearchDriverOpenIdForm form_5 = new SearchDriverOpenIdForm();
+        form_5.setDriverId(driverId);
+        r = drServiceApi.searchDriverOpenId(form_5);
+        String driverOpenId = MapUtil.getStr(r, "result");
+
+        /*
+         * 6.TODO 创建支付订单
+         */
+        
+
+    }
+}
+```
+
+#### 2.微信支付资质申请
+
+对于商家来说，想要开通微信支付，必须要去微信商户平台注册（https://pay.weixin.qq.com/index.php/core/home/login?return_url=%2F），然后把工商登记证明、企业银行账户开户证明、组织机构代码证提交上去，经过半天的审核，如果没有问题，你就开通了微信支付功能。
+
+如果想要在网站或者小程序上面使用微信支付，还要在微信公众平台上面关联你自己的微信商户账号。前提是你的微信开发者账号必须是企业身份，个人身份的开发者账号是无法调用微信支付API的。
+
+#### 3.微信支付接口
+
+如果想要发起微信支付，首先要调用微信支付API接口，创建支付账单，然后把支付账单的信息传递给乘客端小程序，就能看到微信APP弹出付款界面了。
+
+相关API:
+
+| **字段名**   | **变量名**       | **描述**                                    |
+| ------------ | ---------------- | ------------------------------------------- |
+| 小程序ID     | appid            | 微信分配的小程序ID                          |
+| 商户号       | mch_id           | 微信支付分配的商户号                        |
+| 随机字符串   | nonce_str        | 随机字符串，长度要求在32位以内              |
+| 签名         | sign             | 通过签名算法计算得出的签名值                |
+| 签名类型     | sign_type        | 签名类型，默认为MD5，支持HMAC-SHA256和MD5。 |
+| 商品描述     | body             | 商品简单描述，该字段请按照规范传递          |
+| 附加数据     | attach           | 附加数据，属于自定义参数                    |
+| 用户标识     | openid           | 付款人的openId                              |
+| 商户订单号   | out_trade_no     | 商户系统内部订单号，要求32个字符内          |
+| 标价金额     | total_fee        | 订单总金额，单位为分                        |
+| 终端IP       | spbill_create_ip | 调用微信支付API的机器IP（可以随便写）       |
+| 通知地址     | notify_url       | 异步接收微信支付结果通知的回调地址          |
+| 交易类型     | trade_type       | 必须是JSAPI                                 |
+| 是否需要分账 | profit_sharing   | Y，需要分账；N，不分账                      |
+
+微信支付平台给我们返回的响应中包含了下面这些参数。
+
+| **参数**    | **含义**             | **例子**                         |
+| ----------- | -------------------- | -------------------------------- |
+| return_code | 通信状态码           | SUCCESS                          |
+| result_code | 业务状态码           | SUCCESS                          |
+| app_id      | 微信公众账号APPID    | wx8888888888888888               |
+| mch_id      | 商户ID               | 1900000109                       |
+| nonce_str   | 随机字符串           | 5K8264ILTKCH16CQ2502SI8ZNMTM67VS |
+| sign        | 数字签名             | C380BEC2BFD727A4B6845133519F3AD6 |
+| trade_type  | 交易类型             | NATIVE                           |
+| prepay_id   | 预支付交易会话标识ID | wx201410272009395522657a6905100  |
+
+完善上节支付订单的业务逻辑
+
+```java
+@Service
+@Slf4j
+public class OrderServiceImpl implements OrderService {
+    @Resource
+    private MyWXPayConfig myWXPayConfig;
+    
+    @Override
+    @Transactional
+    @LcnTransaction
+    public HashMap createWxPayment(long orderId, long customerId, Long voucherId) {
+        ……
+
+        /*
+         * 6.创建支付订单
+         */
+        try {
+            WXPay wxPay = new WXPay(myWXPayConfig);
+            HashMap param = new HashMap();
+            param.put("nonce_str", WXPayUtil.generateNonceStr());//随机字符串
+            param.put("body", "代驾费");
+            param.put("out_trade_no", uuid);
+            //充值金额转换成分为单位，并且让BigDecimal取整数
+            //amount="1.00";
+            param.put("total_fee", NumberUtil.mul(amount, "100").setScale(0, RoundingMode.FLOOR).toString());
+            param.put("spbill_create_ip", "127.0.0.1");
+            //TODO 这里要修改成内网穿透的公网URL
+            param.put("notify_url", "http://demo.com");
+            param.put("trade_type", "JSAPI");
+            param.put("openid", customerOpenId);
+            param.put("attach", driverOpenId);
+            param.put("profit_sharing", "Y"); //支付需要分账
+            
+            //创建支付订单
+            Map<String, String> result = wxPay.unifiedOrder(param);
+            
+            //预支付交易会话标识ID
+            String prepayId = result.get("prepay_id");
+            if (prepayId != null) {
+                /*
+                 * 7.更新订单记录中的prepay_id字段值
+                 */
+                UpdateOrderPrepayIdForm form_6 = new UpdateOrderPrepayIdForm();
+                form_6.setOrderId(orderId);
+                form_6.setPrepayId(prepayId);
+                odrServiceApi.updateOrderPrepayId(form_6);
+
+                //准备生成数字签名用的数据
+                map.clear();
+                map.put("appId", myWXPayConfig.getAppID());
+                String timeStamp = new Date().getTime() + "";
+                map.put("timeStamp", timeStamp);
+                String nonceStr = WXPayUtil.generateNonceStr();
+                map.put("nonceStr", nonceStr);
+                map.put("package", "prepay_id=" + prepayId);
+                map.put("signType", "MD5");
+                
+                //生成数据签名
+                String paySign = WXPayUtil.generateSignature(map, myWXPayConfig.getKey()); //生成数字签名
+                
+                map.clear(); //清理HashMap，放入结果
+                map.put("package", "prepay_id=" + prepayId);
+                map.put("timeStamp", timeStamp);
+                map.put("nonceStr", nonceStr);
+                map.put("paySign", paySign);
+                //uuid用于付款成功后，移动端主动请求更新充值状态
+                map.put("uuid", uuid); 
+                return map;
+            } else {
+                log.error("创建支付订单失败");
+                throw new HxdsException("创建支付订单失败");
+            }
+        } catch (Exception e) {
+            log.error("创建支付订单失败", e);
+            throw new HxdsException("创建支付订单失败");
+        }
+    }
+}
+```
+
+#### 4.小程序唤起支付窗口
+
+用户收到付款消息后，点击付款按钮，小程序调用`uni.requestPayment()`函数的时候传入这些数据，小程序就能弹出付款窗口了。
+
+```js
+<view class="operate-container">
+  <button class="btn" @tap="payHandle">立即付款</button>
+</view>
+
+payHandle: function() {
+    let that = this;
+    uni.showModal({
+        title: '提示消息',
+        content: '您确定支付该订单？',
+        success: function(resp) {
+            if (resp.confirm) {
+                let data = {
+                    orderId: that.orderId
+                };
+                that.ajax(that.url.createWxPayment, 'POST', data, function(resp) {
+                    let result = resp.data.result;
+                    let pk = result.package;
+                    let timeStamp = result.timeStamp;
+                    let nonceStr = result.nonceStr;
+                    let paySign = result.paySign;
+                    let uuid = result.uuid;
+                    uni.requestPayment({
+                        timeStamp: timeStamp,
+                        nonceStr: nonceStr,
+                        package: pk,
+                        paySign: paySign,
+                        signType: 'MD5',
+                        success: function() {
+                            console.log('付款成功');
+                            //TODO 主动发起查询请求
+                        },
+                        fail: function(error) {
+                            console.error(error);
+                            uni.showToast({
+                                icon: 'error',
+                                title: '付款失败'
+                            });
+                        }
+                    });
+                });
+            }
+        }
+    });
+}
+```
+
+#### 5.后端接收付款结果
+
+微信平台发送付款结果通知的Request里面是XML格式的数据，所以要从中提取出我们需要的关键数据，这部分的文档规范，大家可以查阅微信支付的官方资料（https://pay.weixin.qq.com/wiki/doc/api/native.php?chapter=9_7&index=8）。而且这个请求并不是只发送一次，如果商户系统没有接收到请求，微信平台会每隔一小段时间再发送一次付款结果。
+
+| **参数**       | **含义**   | **类型** | **示例**                         |
+| -------------- | ---------- | -------- | -------------------------------- |
+| return_code    | 通信状态码 | String   | SUCCESS                          |
+| result_code    | 业务状态码 | String   | SUCCESS /  FAIL                  |
+| sign           | 数字签名   | String   | C380BEC2BFD727A4B6845133519F3AD6 |
+| out_trade_no   | 商品订单ID | String   | 1212321211201407033568112322     |
+| transaction_id | 支付订单ID | String   | 1217752501201407033233368018     |
+| total_fee      | 订单金额   | int      | 150                              |
+| time_end       | 支付的时间 | String   | 20141030133525                   |
+
+```xml
+<xml>
+    <appid><![CDATA[wx2421b1c4370ec43b]]></appid>
+    <attach><![CDATA[支付测试]]></attach>
+    <bank_type><![CDATA[CFT]]></bank_type>
+    <fee_type><![CDATA[CNY]]></fee_type>
+    <is_subscribe><![CDATA[Y]]></is_subscribe>
+    <mch_id><![CDATA[10000100]]></mch_id>
+    <nonce_str><![CDATA[5d2b6c2a8db53831f7eda20af46e531c]]></nonce_str>
+    <openid><![CDATA[oUpF8uMEb4qRXf22hE3X68TekukE]]></openid>
+    <out_trade_no><![CDATA[1409811653]]></out_trade_no>
+    <result_code><![CDATA[SUCCESS]]></result_code>
+    <return_code><![CDATA[SUCCESS]]></return_code>
+    <sign><![CDATA[B552ED6B279343CB493C5DD0D78AB241]]></sign>
+    <time_end><![CDATA[20140903131540]]></time_end>
+    <total_fee>1</total_fee>
+    <coupon_fee><![CDATA[10]]></coupon_fee>
+    <coupon_count><![CDATA[1]]></coupon_count>
+    <coupon_type><![CDATA[CASH]]></coupon_type>
+    <coupon_id><![CDATA[10000]]></coupon_id>
+    <trade_type><![CDATA[JSAPI]]></trade_type>
+    <transaction_id><![CDATA[1004400740201409030005092168]]></transaction_id>
+</xml> 
+
+```
+
+返回给微信平台的响应内容也必须是XML格式的，否则微信平台就会认为你没收到付款结果通知。
+
+```xml
+<xml>
+    <return_code><![CDATA[SUCCESS]]></return_code>
+    <return_msg><![CDATA[OK]]></return_msg>
+</xml> 
+```
+
+我们需要创建一个Web方法来接收微信平台发送过来的付款结果通知，所以我们找到`OrderController.java`类，然后声明Web方法。
+
+```java
+@RestController
+@RequestMapping("/order")
+@Tag(name = "OrderController", description = "订单模块Web接口")
+public class OrderController {
+    ……
+    @RequestMapping("/recieveMessage")
+    @Operation(summary = "接收代驾费消息通知")
+    public void recieveMessage(HttpServletRequest request, HttpServletResponse response) throws Exception {
+        request.setCharacterEncoding("utf-8");
+        Reader reader = request.getReader();
+        BufferedReader buffer = new BufferedReader(reader);
+        String line = buffer.readLine();
+        StringBuffer temp = new StringBuffer();
+        while (line != null) {
+            temp.append(line);
+            line = buffer.readLine();
+        }
+        buffer.close();
+        reader.close();
+        String xml = temp.toString();
+        if (WXPayUtil.isSignatureValid(xml, myWXPayConfig.getKey())) {
+            Map<String, String> map = WXPayUtil.xmlToMap(xml);
+            String resultCode = map.get("result_code");
+            String returnCode = map.get("return_code");
+            if ("SUCCESS".equals(resultCode) && "SUCCESS".equals(returnCode)) {
+                response.setCharacterEncoding("utf-8");
+                response.setContentType("application/xml");
+                Writer writer = response.getWriter();
+                BufferedWriter bufferedWriter = new BufferedWriter(writer);
+                bufferedWriter.write("<xml><return_code><![CDATA[SUCCESS]]></return_code> <return_msg><![CDATA[OK]]></return_msg></xml>");
+                bufferedWriter.close();
+                writer.close();
+
+                String uuid = map.get("out_trade_no");
+                String payId = map.get("transaction_id");
+                String driverOpenId = map.get("attach");
+                String payTime = DateUtil.parse(map.get("time_end"), "yyyyMMddHHmmss").toString("yyyy-MM-dd HH:mm:ss");
+
+                //TODO 修改订单状态、执行分账、发放系统奖励
+            }
+        } else {
+            response.sendError(500, "数字签名异常");
+        }
+    }
+}
+```
+
+乘客付款成功后，将结果改成已付款状态。       如果满足奖励条件，还要向司机发放奖励。                                                                                                                                                                                                                                                                                               
+
+#### 6.司机奖励发放
+
+先来了解一下司机`tb_wallet_income`表结构。
+
+| **字段名**  | **类型** | **非空** | **备注**                  |
+| ----------- | -------- | -------- | ------------------------- |
+| id          | bigint   | True     | 主键                      |
+| uuid        | varchar  | True     | uuid字符串                |
+| driver_id   | bigint   | True     | 司机ID                    |
+| amount      | decimal  | True     | 金额                      |
+| type        | tinyint  | True     | 1充值，2奖励，3补贴       |
+| prepay_id   | varchar  | False    | 预支付订单ID              |
+| status      | tinyint  | True     | 1未支付，2已支付，3已到账 |
+| remark      | varchar  | False    | 备注信息                  |
+| create_time | datetime | True     | 创建时间                  |
+
+**业务逻辑**
+
+```java
+@Service
+public class OrderServiceImpl implements OrderService {
+    ……
+        
+    @Override
+    @Transactional
+    @LcnTransaction
+    public void handlePayment(String uuid, String payId, String driverOpenId, String payTime) {
+        /* 
+         * 更新订单状态之前，先查询订单的状态。
+         * 因为乘客端付款成功之后，会主动发起Ajax请求，要求更新订单状态。
+         * 所以后端接收到付款通知消息之后，不要着急修改订单状态，先看一下订单是否已经是7状态
+         */
+        HashMap map = orderDao.searchOrderIdAndStatus(uuid);
+        int status = MapUtil.getInt(map, "status");
+        if (status == 7) {
+            return;
+        }
+
+        HashMap param = new HashMap() {{
+            put("uuid", uuid);
+            put("payId", payId);
+            put("payTime", payTime);
+        }};
+        //更新订单记录的PayId、状态和付款时间
+        int rows = orderDao.updateOrderPayIdAndStatus(param);
+        if (rows != 1) {
+            throw new HxdsException("更新支付订单ID失败");
+        }
+        
+        //查询系统奖励
+        map = orderDao.searchDriverIdAndIncentiveFee(uuid);
+        String incentiveFee = MapUtil.getStr(map, "incentiveFee");
+        long driverId = MapUtil.getLong(map, "driverId");
+        //判断系统奖励费是否大于0
+        if (new BigDecimal(incentiveFee).compareTo(new BigDecimal("0.00")) == 1) {
+            TransferForm form = new TransferForm();
+            form.setUuid(IdUtil.simpleUUID());
+            form.setAmount(incentiveFee);
+            form.setDriverId(driverId);
+            form.setType((byte) 2);
+            form.setRemark("系统奖励费");
+            //给司机钱包转账奖励费
+            drServiceApi.transfer(form);
+        }
+        
+        //先判断是否有分账定时器   
+        if (quartzUtil.checkExists(uuid, "代驾单分账任务组") || quartzUtil.checkExists(uuid, "查询代驾单分账任务组")) {
+            //存在分账定时器就不需要再执行分账
+            return;
+        }
+        //执行分账
+        JobDetail jobDetail = JobBuilder.newJob(HandleProfitsharingJob.class).build();
+        Map dataMap = jobDetail.getJobDataMap();
+        dataMap.put("uuid", uuid);
+        dataMap.put("driverOpenId", driverOpenId);
+        dataMap.put("payId", payId);
+        
+        //2分钟之后执行分账定时器
+        Date executeDate = new DateTime().offset(DateField.MINUTE, 2);
+        quartzUtil.addJob(jobDetail, uuid, "代驾单分账任务组", executeDate);
+
+        //更新订单状态为已完成状态（8）
+        rows = orderDao.finishOrder(uuid);
+        if (rows != 1) {
+            throw new HxdsException("更新订单结束状态失败");
+        }
+    }
+    }
+}
+```
+
+#### 7.微信支付分账
+
+在微信商户平台上面，在产品大全栏目中可以找到微信分账服务，开启这项服务即可。2. 关于分账比例
+
+普通商户的分账比例默认上限是30%，也就是说商户自己留存70%，给员工或者其他人分账最高比例是30%，在普通业务中也还凑合，因为员工拿的提成很少有高于30%的。但是在代驾业务中，代驾司机的劳务费占了订单总额的大头，所以给司机30%的分账比例根本不够。
+
+微信商户平台之所以给商户默认设置这么低的分账上限，主要是为了防止商户逃税或者洗钱。比如公司按照营业利润交税，但是公司老板想要少缴税，这需要通过某些手段减少企业盈利。于是把订单分账比例调高到99%，然后公司客户每笔货款都被分账到了老板指定的微信上面，揣到老板自己腰包里面，而公司的营业利润大幅降低，缴纳的税款也就变少了。微信平台为了避免有些公司通过分账来逃税，所以就给分账比例设置了30%的上线。不过也不是申请更高的分账比例，在设置分账比例上线的页面中，我们可以按照申请流程的指引，申请更高的分账比例。这就需要企业提交更多的证明材料，然后微信平台还要聘请专业的审计公司对审核的单位加以评估。即便你们公司申请下来高比例的分账，但是微信平台会把你们公司的分账记录和税务局的金税系统联网，随时监控你们公司是否伪造交易虚设分账，企图逃税。
+
+微信支付官方提供了在线文档（https://pay.weixin.qq.com/wiki/doc/api/allocation.php?chapter=27_1&index=1），详细说明了如何创建分账请求。微信分账可以单次分账，也可以多次分账，我们只需要给司机分账，所以用单次分账即可。
+
+| **参数名称** | **变量名称**   | **类型** | **例子**                                                     |
+| ------------ | -------------- | -------- | ------------------------------------------------------------ |
+| 商户号       | mch_id         | 字符串   | 1900000100                                                   |
+| 小程序APPID  | appid          | 字符串   | wx8888888888888888                                           |
+| 随机字符串   | nonce_str      | 字符串   | 5K8264ILTKCH16CQ2502SI8ZNMTM67VS                             |
+| 数字签名     | sign           | 字符串   | C38F3AD6C380BEC2BFD727A4B684519FAD6                          |
+| 微信账单ID   | transaction_id | 字符串   | 4208450740201411110007820472                                 |
+| 商户订单号   | out_order_no   | 字符串   | P20150806125346                                              |
+| 分账收款方   | receivers      | 字符串   | [ {"type": "PERSONAL_OPENID ", <br/>"account":"OPENID字符串", <br/>"amount":100, <br/>"description": "分到商户" }] |
+
+提交分账请求之后，返回的响应里面也包含了很多信息，下面咱们来看一下。
+
+| **参数名称** | **变量名称** | **例子**                               |
+| ------------ | ------------ | -------------------------------------- |
+| 通信状态码   | return_code  | SUCCESS / FAIL                         |
+| 业务状态码   | result_code  | SUCCESS / FAIL                         |
+| 错误代码     | err_code     | SYSTEMERROR                            |
+| 错误代码描述 | err_code_des | 系统超时                               |
+| 分账单状态   | status       | PROCESSING：处理中，FINISHED：处理完成 |
+| 数字签名     | sign         | HMACSHA256算法生成的数字签名           |
+
+假设用户付款成功，商户系统至少要2分钟之后才可以申请分账。很多同学第一次做分账，不知道这个细节，导致Web方法刚收到付款成功的通知消息，就立即发起分账，然后就收到订单暂时不可以分账的异常消息。既然我们要等待两分钟以上才可以申请分账，所以我们就应该用上Quartz定时器技术。因为执行分账前，我们要知道给司机的分账金额是多少，才能创建分账请求。这就需要我们编写SQL语句，查询分账记录的数据。另外分账成功之后，我们需要修改分账记录的状态，所以我们还需要编写UPDATE语句才行。
+
+#### 8.定时任务进行分账
+
+```java
+@Slf4j
+public class HandleProfitsharingJob extends QuartzJobBean {
+    @Resource
+    private OrderProfitsharingDao profitsharingDao;
+
+    @Resource
+    private MyWXPayConfig myWXPayConfig;
+
+    @Override
+    @Transactional
+    protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
+        //获取传给定时器的业务数据
+        Map map = context.getJobDetail().getJobDataMap();
+        String uuid = MapUtil.getStr(map, "uuid");
+        String driverOpenId = MapUtil.getStr(map, "driverOpenId");
+        String payId = MapUtil.getStr(map, "payId");
+
+        //查询分账记录ID、分账金额
+        map = profitsharingDao.searchDriverIncome(uuid);
+        if (map == null || map.size() == 0) {
+            log.error("没有查询到分账记录");
+            return;
+        }
+        String driverIncome = MapUtil.getStr(map, "driverIncome");
+        long profitsharingId = MapUtil.getLong(map, "profitsharingId");
+
+        try {
+            WXPay wxPay = new WXPay(myWXPayConfig);
+
+            //分账请求必要的参数
+            HashMap param = new HashMap() {{
+                put("appid", myWXPayConfig.getAppID());
+                put("mch_id", myWXPayConfig.getMchID());
+                put("nonce_str", WXPayUtil.generateNonceStr());
+                put("out_order_no", uuid);
+                put("transaction_id", payId);
+            }};
+
+            //分账收款人数组
+            JSONArray receivers = new JSONArray();
+            //分账收款人（司机）信息
+            JSONObject json = new JSONObject();
+            json.set("type", "PERSONAL_OPENID");
+            json.set("account", driverOpenId);
+            //分账金额从元转换成分
+            int amount = Integer.parseInt(NumberUtil.mul(driverIncome, "100").setScale(0, RoundingMode.FLOOR).toString());
+            json.set("amount", amount);
+            //json.set("amount", 1); //设置分账金额为1分钱（测试阶段）
+            json.set("description", "给司机的分账");
+            receivers.add(json);
+
+            //添加分账收款人JSON数组
+            param.put("receivers", receivers.toString());
+
+            //生成数字签名
+            String sign = WXPayUtil.generateSignature(param, myWXPayConfig.getKey(), WXPayConstants.SignType.HMACSHA256);
+            //添加数字签名
+            param.put("sign", sign);
+
+            String url = "/secapi/pay/profitsharing";
+            //执行分账请求
+            String response = wxPay.requestWithCert(url, param, 3000, 3000);
+            log.debug(response);
+
+            //验证响应的数字签名
+            if (WXPayUtil.isSignatureValid(response, myWXPayConfig.getKey(), WXPayConstants.SignType.HMACSHA256)) {
+                //从响应中提取数据
+                Map<String, String> data = wxPay.processResponseXml(response, WXPayConstants.SignType.HMACSHA256);
+                String returnCode = data.get("return_code");
+                String resultCode = data.get("result_code");
+                //验证通信状态码和业务状态码
+                if ("SUCCESS".equals(resultCode) && "SUCCESS".equals(returnCode)) {
+                    String status = data.get("status");
+                    //判断分账成功
+                    if ("FINISHED".equals(status)) {
+                        //更新分账状态
+                        int rows = profitsharingDao.updateProfitsharingStatus(profitsharingId);
+                        if (rows != 1) {
+                            log.error("更新分账状态失败", new HxdsException("更新分账状态失败"));
+                        }
+                    }
+                    //判断正在分账中
+                    else if ("PROCESSING".equals(status)) {
+                        //TODO 创建查询分账定时器
+                    }
+                } else {
+                    log.error("执行分账失败", new HxdsException("执行分账失败"));
+                }
+            } else {
+                log.error("验证数字签名失败", new HxdsException("验证数字签名失败"));
+            }
+
+        } catch (Exception e) {
+            log.error("执行分账失败", e);
+        }
+        
+                if ("FINISHED".equals(status)) {
+            ……
+        }
+        //判断正在分账中
+        else if ("PROCESSING".equals(status)) {
+            //如果状态是分账中，等待几分钟再查询分账结果
+            JobDetail jobDetail = JobBuilder.newJob(SearchProfitsharingJob.class).build();
+            Map dataMap = jobDetail.getJobDataMap();
+            dataMap.put("uuid", uuid);
+            dataMap.put("profitsharingId", profitsharingId);
+            dataMap.put("payId", payId);
+
+            Date executeDate = new DateTime().offset(DateField.MINUTE, 20);
+            quartzUtil.addJob(jobDetail, uuid, "查询代驾单分账任务组", executeDate);
+        }
+    }
+}
+```
+
+#### 9.定时器工具类
+
+```java
+@Component
+@Slf4j
+public class QuartzUtil {
+
+    @Resource
+    private Scheduler scheduler;
+
+    /**
+     * 添加定时器
+     *
+     * @param jobDetail    定时器任务对象
+     * @param jobName      任务名字
+     * @param jobGroupName 任务组名字
+     * @param start        开始日期时间
+     */
+    public void addJob(JobDetail jobDetail, String jobName, String jobGroupName, Date start) {
+        try {
+            Trigger trigger = TriggerBuilder.newTrigger()
+                    .withIdentity(jobName, jobGroupName)
+                    .withSchedule(SimpleScheduleBuilder.simpleSchedule()
+                            .withMisfireHandlingInstructionFireNow())
+                    .startAt(start).build();
+            scheduler.scheduleJob(jobDetail, trigger);
+            log.debug("成功添加" + jobName + "定时器");
+        } catch (SchedulerException e) {
+            log.error("定时器添加失败", e);
+        }
+    }
+
+    /**
+     * 查询是否存在定时器
+     *
+     * @param jobName      任务名字
+     * @param jobGroupName 任务组名字
+     * @return
+     */
+    public boolean checkExists(String jobName, String jobGroupName) {
+        TriggerKey triggerKey = new TriggerKey(jobName, jobGroupName);
+        try {
+            boolean bool = scheduler.checkExists(triggerKey);
+            return bool;
+        } catch (Exception e) {
+            log.error("定时器查询失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 删除定时器
+     *
+     * @param jobName      任务名字
+     * @param jobGroupName 任务组名字
+     */
+    public void deleteJob(String jobName, String jobGroupName) {
+        TriggerKey triggerKey = TriggerKey.triggerKey(jobName, jobGroupName);
+        try {
+            scheduler.resumeTrigger(triggerKey);
+            scheduler.unscheduleJob(triggerKey);
+            scheduler.deleteJob(JobKey.jobKey(jobName, jobGroupName));
+            log.debug("成功删除" + jobName + "定时器");
+        } catch (SchedulerException e) {
+            log.error("定时器删除失败", e);
+        }
+
+    }
+}
+```
+
+#### 10.定时器查询分账结果
+
+微信服务器消息队列中积压的分账任务很多，所以我创建分账请求之后，并没有立即成功分账，响应中status状态是分账中，所以当前的定时器并没有把分账记录修改成2状态。遇到这种情况，我们应该创建一个20分钟之后运行的定时器，用来检查分账的结果。如果分账成功，我们就把数据库中分账记录的status字段改成2状态。
+
+微信官方提供了查询分账结果的API文档（https://pay.weixin.qq.com/wiki/doc/api/allocation.php?chapter=27_2&index=3），我们写代码之前先来看一下这部分的资料。发起查询请求的时候，需要我们提交一些参数，如下：
+
+| **参数**   | **变量名**     | **类型** | **示例**                         |
+| ---------- | -------------- | -------- | -------------------------------- |
+| 商户号     | mch_id         | 字符串   | 1900000100                       |
+| 微信账单号 | transaction_id | 字符串   | 4208450740201411148              |
+| 商户订单号 | out_order_no   | 字符串   | P20150806125312366               |
+| 随机字符串 | nonce_str      | 字符串   | 5K8264ILTKCH16CQ2502SI8Z         |
+| 签名       | sign           | 字符串   | C380BEC2BFD727A4B6845133519F3AD6 |
+
+微信平台返回的响应里面，关键的参数我列在下面的表格中了。
+
+| **参数**     | **变量名**   | **类型** | **示例**                               |
+| ------------ | ------------ | -------- | -------------------------------------- |
+| 通信状态码   | return_code  | 字符串   | SUCCESS  / FAIL                        |
+| 业务状态码   | result_code  | 字符串   | SUCCESS  / FAIL                        |
+| 错误代码     | err_code     | 字符串   | SYSTEMERROR                            |
+| 错误代码描述 | err_code_des | 字符串   | 系统超时                               |
+| 数字签名     | sign         | 字符串   | C380BEC2BFD727A4B6845133519F3AD6       |
+| 分账单状态   | status       | 字符串   | PROCESSING：处理中，FINISHED：处理完成 |
+
+#### 11.分账查询任务类
+
+```java
+@Slf4j
+public class SearchProfitsharingJob extends QuartzJobBean {
+    @Resource
+    private OrderProfitsharingDao profitsharingDao;
+
+    @Resource
+    private MyWXPayConfig myWXPayConfig;
+
+    @Override
+    @Transactional
+    protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
+        Map map = context.getJobDetail().getJobDataMap();
+        String uuid = MapUtil.getStr(map, "uuid");
+        long profitsharingId = MapUtil.getLong(map, "profitsharingId");
+        String payId = MapUtil.getStr(map, "payId");
+
+        try {
+            WXPay wxPay = new WXPay(myWXPayConfig);
+            String url = "/pay/profitsharingquery";
+
+            HashMap param = new HashMap() {{
+                put("mch_id", myWXPayConfig.getMchID());
+                put("transaction_id", payId);
+                put("out_order_no", uuid);
+                put("nonce_str", WXPayUtil.generateNonceStr());
+            }};
+            
+            //生成数字签名
+            String sign = WXPayUtil.generateSignature(param, myWXPayConfig.getKey(), WXPayConstants.SignType.HMACSHA256);
+            param.put("sign", sign);
+            
+            //查询分账结果
+            String response = wxPay.requestWithCert(url, param, 3000, 3000);
+            log.debug(response);
+            
+            //验证响应的数字签名
+            if (WXPayUtil.isSignatureValid(response, myWXPayConfig.getKey(), WXPayConstants.SignType.HMACSHA256)) {
+                Map<String, String> data = wxPay.processResponseXml(response,WXPayConstants.SignType.HMACSHA256);
+                String returnCode = data.get("return_code");
+                String resultCode = data.get("result_code");
+                if ("SUCCESS".equals(resultCode) && "SUCCESS".equals(returnCode)) {
+                    String status = data.get("status");
+                    if ("FINISHED".equals(status)) {
+                        //把分账记录更新成2状态
+                        int rows = profitsharingDao.updateProfitsharingStatus(profitsharingId);
+                        if (rows != 1) {
+                            log.error("更新分账状态失败", new HxdsException("更新分账状态失败"));
+                        }
+                    }
+                } else {
+                    log.error("查询分账失败", new HxdsException("查询分账失败"));
+                }
+            } else {
+                log.error("验证数字签名失败", new HxdsException("验证数字签名失败"));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
+}
+```
+
+### 四、系统主动查询支付结果
+
+接下来要处理一些意外情况。比如说微信平台的消息队列出现故障，乘客付款成功之后，微信平台没有发送付款结果通知消息给Web方法。或者说，咱们本地的网络出现了故障，没有收到付款结果通知消息。这会导致，乘客付款成功，但是代驾订单依旧是未付款状态。
+
+为了避免收不到付款结果通知消息，而不知道付款结果，我们可以让乘客小程序在付款成功之后，自动发出Ajax请求，然后被网关子系统路由给订单子系统。订单子系统向微信支付平台发起请求，查询付款结果。如果付款成功，就更新订单状态，并且执行分账。微信官方提供了查询支付结果的API文档（https://pay.weixin.qq.com/wiki/doc/api/wxa/wxa_api.php?chapter=9_2），我们先简单了解一下。
+
+创建查询请求的时候，要规定提交的数据，如下面的表格。
+
+| **参数**   | **变量名**   | **类型** | ** 示例**                        |
+| ---------- | ------------ | -------- | -------------------------------- |
+| 小程序ID   | appid        | 字符串   | wxd678efh567hg6787               |
+| 商户号     | mch_id       | 字符串   | 1230000109                       |
+| 商户订单号 | out_trade_no | 字符串   | 20150806125346                   |
+| 随机字符串 | nonce_str    | 字符串   | C380BEC2BFD727A                  |
+| 数字签名   | sign         | 字符串   | 5K8264ILTKCH16CQ2502SI8ZNMTM67VS |
+
+返回的响应中，关键的参数我提取出来放在下面表格里面了。
+
+| 参数         | 变量名         | 示例                                                         |
+| ------------ | -------------- | ------------------------------------------------------------ |
+| 通信状态码   | return_code    | SUCCESS/FAIL                                                 |
+| 业务状态码   | result_code    | SUCCESS/FAIL                                                 |
+| 错误代码     | err_code       | SYSTEMERROR                                                  |
+| 错误代码描述 | err_code       | 系统错误                                                     |
+| 付款金额     | total_fee      | 100                                                          |
+| 交易状态     | trade_state    | SUCCESS–支付成功 REFUND–转入退款 NOTPAY–未支付 CLOSED–已关闭 ACCEPT–已接收，等待扣款 |
+| 自定义参数   | attach         |                                                              |
+| 微信账单号   | transaction_id | 1009660380201506130                                          |
+| 支付完成时间 | time_end       | 20141030133525                                               |
+
+#### 1.支付结果查询与订单更新
+
+```java
+@Service
+public class OrderServiceImpl implements OrderService {
+    @Resource
+    private MyWXPayConfig myWXPayConfig;
+    
+    ……
+    @Override
+    @Transactional
+    @LcnTransaction
+    public String updateOrderAboutPayment(Map param) {
+        long orderId = MapUtil.getLong(param, "orderId");
+        /*
+        * 查询订单状态。
+        * 因为有可能Web方法先收到了付款结果通知消息，把订单状态改成了7、8状态，
+        * 所以我们要先查询订单状态。
+        */
+        HashMap map = orderDao.searchUuidAndStatus(orderId);
+        String uuid = MapUtil.getStr(map, "uuid");
+        int status = MapUtil.getInt(map, "status");
+        //如果订单状态已经是已付款，就退出当前方法
+        if (status == 7 || status == 8) {
+            return "付款成功";
+        }
+        
+        //查询支付结果的参数
+        map.clear();
+        map.put("appid", myWXPayConfig.getAppID());
+        map.put("mch_id", myWXPayConfig.getMchID());
+        map.put("out_trade_no", uuid);
+        map.put("nonce_str", WXPayUtil.generateNonceStr());
+        try {
+            //生成数字签名
+            String sign = WXPayUtil.generateSignature(map, myWXPayConfig.getKey());
+            map.put("sign", sign);
+            
+            WXPay wxPay = new WXPay(wxPayConfig);
+            //查询支付结果
+            Map<String, String> result = wxPay.orderQuery(map);
+            
+            String returnCode = result.get("return_code");
+            String resultCode = result.get("result_code");
+            if ("SUCCESS".equals(returnCode) && "SUCCESS".equals(resultCode)) {
+                String tradeState = result.get("trade_state");
+                if ("SUCCESS".equals(tradeState)) {
+                    String driverOpenId = result.get("attach");
+                    String payId = result.get("transaction_id");
+                    String payTime = new DateTime(result.get("time_end"), "yyyyMMddHHmmss").toString("yyyy-MM-dd HH:mm:ss");
+                    //更新订单相关付款信息和状态
+                    param.put("payId", payId);
+                    param.put("payTime", payTime);
+                    
+                    //把订单更新成7状态
+                    int rows = orderDao.updateOrderAboutPayment(param);
+                    if (rows != 1) {
+                        throw new HxdsException("更新订单相关付款信息失败");
+                    }
+
+                    //查询系统奖励
+                    map = orderDao.searchDriverIdAndIncentiveFee(uuid);
+                    String incentiveFee = MapUtil.getStr(map, "incentiveFee");
+                    long driverId = MapUtil.getLong(map, "driverId");
+                    //判断系统奖励费是否大于0
+                    if (new BigDecimal(incentiveFee).compareTo(new BigDecimal("0.00")) == 1) {
+                        TransferForm form = new TransferForm();
+                        form.setUuid(IdUtil.simpleUUID());
+                        form.setAmount(incentiveFee);
+                        form.setDriverId(driverId);
+                        form.setType((byte) 2);
+                        form.setRemark("系统奖励费");
+                        //给司机钱包转账奖励费
+                        drServiceApi.transfer(form);
+                    }
+
+                    //先判断是否有分账定时器
+                    if (quartzUtil.checkExists(uuid, "代驾单分账任务组") || quartzUtil.checkExists(uuid, "查询代驾单分账任务组")) {
+                        //存在分账定时器就不需要再执行分账
+                        return "付款成功";
+                    }
+                    //执行分账
+                    JobDetail jobDetail = JobBuilder.newJob(HandleProfitsharingJob.class).build();
+                    Map dataMap = jobDetail.getJobDataMap();
+                    dataMap.put("uuid", uuid);
+                    dataMap.put("driverOpenId", driverOpenId);
+                    dataMap.put("payId", payId);
+
+                    Date executeDate = new DateTime().offset(DateField.MINUTE, 2);
+                    quartzUtil.addJob(jobDetail, uuid, "代驾单分账任务组", executeDate);
+                    rows = orderDao.finishOrder(uuid);
+                    if(rows!=1){
+                        throw new HxdsException("更新订单结束状态失败");
+                    }
+                    return "付款成功";
+                } else {
+                    return "付款异常";
+                }
+            } else {
+                return "付款异常";
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new HxdsException("更新订单相关付款信息失败");
+        }
+    }
+}
+```
+
+乘客支付订单后，可以主动发送Ajax请求，查询订单支付情况。
+
+司机端程序上面设置轮询定时器，不停的查询代驾订单是否付款成功。

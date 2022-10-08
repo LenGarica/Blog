@@ -4,7 +4,7 @@ Java程序员，Go程序员
 
 # 个人信息
 
-* 张毅轩/男/1996
+* 张毅轩/男/26/重庆
 * 本科：重庆移通学院/大数据与软件学院/软件工程
 * 硕士：重庆科技学院/智能技术与工程学院/安全工程
 * 奖项：2021 华为杯研究生数学建模竞赛国家三等奖、2021 研电赛西南三等奖、研究生一/二等奖学金
@@ -15,7 +15,6 @@ Java程序员，Go程序员
 # 技能清单
 
 * 熟练掌握 Java、Go 语言，熟练使用关系型数据库 MySQL，了解 Redis、MongoDB。
-
 * 对 JVM 有初步的理解，了解 JVM 内存区域、Java 内存模型、垃圾回收机制等。了解 Go 语言内存分配和垃圾回收机制。
 * 熟悉 Java 常用集合底层原理，如 ArrayList、HashMap 等。熟悉 Go 语言 slice、map 原理。
 * 熟练掌握 Spring、SpringBoot、Mybatis/MybatisPlus 等开发框架，对 Spring 核心原理有一定了解。
@@ -23,6 +22,7 @@ Java程序员，Go程序员
 * 对 RabbitMQ 消息队列有一定的了解，能使用 WebSocket 进行前后端实时通信。
 * 熟悉常用的设计模式，如单例设计模式、工厂模式、观察者模式等。
 * 了解微服务、熔断、负载均衡等概念。熟悉 SpringCloud、Nacos、Sentinel 等框架的配置和使用。
+* 了解HDFS、HBase、MapReduce、Spark、Flink等大数据框架。
 * 熟练使用 IDEA、GoLand、Git、Maven 等常用开发工具，熟练使用 Swagger、FastRequest 等接口调试工具。
 
 # 实习经历
