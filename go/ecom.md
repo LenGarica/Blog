@@ -331,3 +331,849 @@ func Cors() gin.HandlerFunc {
 }
 ```
 
+### 四、服务注册与发现
+
+#### 1.什么是服务注册和发现
+
+在电商网站上，我们通常碰到某些节假日的促销活动，这种促销活动不是每天都有的，而是具有特别的时效性，而且针对不同地区，平台会给出不同的促销活动。
+
+假如促销活动的产品已经在线上运行。在某个节假日，运营想搞一场促销活动，假设为了为这场促销活动提供服务，我们可能要新开启三个微服务实例来支撑这场促销活动。而与此同时，作为苦逼程序员的你就只有手动去APl gateway 中添加新增的这三个微服务实例的ip 与port，一个真正在线的微服务系统可能有成百上千微服务，难道也要一个一个去手动添加吗?有没有让系统自动去实现这些操作的方法呢?答案当然是有的。
+当我们新添加一个微服务实例的时候，微服务就会将自己的 ip 与port 发送到注册中心，在注册中心里面记录起来。当APl gateway需要访问某些微服务的时候，就会去注册中心取到相应的 ip与port。从而实现白动化操作。
+
+#### 2.技术选型
+
+| 名称      | 优点                                                         | 缺点                                                         | 接口     | 一致性算法 |
+| --------- | ------------------------------------------------------------ | ------------------------------------------------------------ | -------- | ---------- |
+| zookeeper | 1.提供wathcer机制能够实时获取服务提供者的状态。2.dubbo等框架支持 | 1.没有健康检查2.需要在服务中集成sdk，复杂度高3.不支持多数据中心 | sdk      | Paxos      |
+| consul    | 1.简单易用，不需要集成sdk 2.自带健康检查 3.支持多数据中心 4.提供web管理界面 | 1.不能实时获取服务信息的变化通知                             | http/dns | Raft       |
+| etcd      | 1.简单易用，不需要集成sdk2.可配置性强                        | 1.没有健康检查 2.需要配合第三方工具一起完成服务发现 3.不支持多数据中心 | http     | Raft       |
+
+#### 3.Paxos共识算法
+
+Paxos 算法就是一种基于消息传递模型的共识算法，解决的问题是一个分布式系统如何就某个值（决议）达成一致。Paxos 算法适用的几种情况：一台机器中多个进程/线程达成数据一致；分布式文件系统或者分布式数据库中多客户端并发读写数据；分布式存储中多个副本响应读写请求的一致性。
+
+Paxos算法运行在允许宕机故障的异步系统中，不要求可靠的消息传递，可容忍消息丢失、延迟、乱序以及重复。它利用大多数 (Majority) 机制保证了2F+1的容错能力，即2F+1个节点的系统最多允许F个节点同时出现故障。
+
+一个或多个提议进程 (Proposer) 可以发起提案 (Proposal)，Paxos算法使所有提案中的某一个提案，在所有进程中达成一致。系统中的多数派同时认可该提案，即达成了一致。最多只针对一个确定的提案达成一致。
+
+Paxos将系统中的角色分为提议者 (Proposer)，决策者 (Acceptor)，和最终决策学习者 (Learner):
+
+- **Proposer**: 提出提案 (Proposal)。Proposal信息包括提案编号 (Proposal ID) 和提议的值 (Value)。
+- **Acceptor**：参与决策，回应Proposers的提案。收到Proposal后可以接受提案，若Proposal获得多数Acceptors的接受，则称该Proposal被批准。
+- **Learner**：不参与决策，从Proposers/Acceptors学习最新达成一致的提案（Value）。
+
+在多副本状态机中，每个副本同时具有Proposer、Acceptor、Learner三种角色。
+
+![paxos一致性算法角色](../picture/paxos.png)
+
+Paxos算法通过一个决议分为两个阶段（Learn阶段之前决议已经形成）：
+
+1. 第一阶段：Prepare阶段。Proposer向Acceptors发出Prepare请求，Acceptors针对收到的Prepare请求进行Promise承诺。
+2. 第二阶段：Accept阶段。Proposer收到多数Acceptors承诺的Promise后，向Acceptors发出Propose请求，Acceptors针对收到的Propose请求进行Accept处理。
+3. 第三阶段：Learn阶段。Proposer在收到多数Acceptors的Accept之后，标志着本次Accept成功，决议形成，将形成的决议发送给所有Learners。
+
+Paxos算法流程中的每条消息描述如下：
+
+- Prepare: Proposer生成全局唯一且递增的Proposal ID (可使用时间戳加Server ID)，向所有Acceptors发送Prepare请求，这里无需携带提案内容，只携带Proposal ID即可。
+
+- Promise: Acceptors收到Prepare请求后，做出“两个承诺，一个应答”。
+
+两个承诺：
+
+1. 不再接受Proposal ID小于等于（注意：这里是<= ）当前请求的Prepare请求。
+
+2. 不再接受Proposal ID小于（注意：这里是< ）当前请求的Propose请求。
+
+一个应答：
+
+不违背以前作出的承诺下，回复已经Accept过的提案中Proposal ID最大的那个提案的Value和Proposal ID，没有则返回空值。
+
+- Propose: Proposer 收到多数Acceptors的Promise应答后，从应答中选择Proposal ID最大的提案的Value，作为本次要发起的提案。如果所有应答的提案Value均为空值，则可以自己随意决定提案Value。然后携带当前Proposal ID，向所有Acceptors发送Propose请求。
+- Accept: Acceptor收到Propose请求后，在不违背自己之前作出的承诺下，接受并持久化当前Proposal ID和提案Value。
+- Learn: Proposer收到多数Acceptors的Accept后，决议形成，将形成的决议发送给所有Learners。
+
+
+#### 4.Raft一致性算法
+
+raft一致性算法基于Paxos算法，但是更容易理解和实现。
+
+raft同样利用大多数 (Majority) 机制保证了2F+1的容错能力，即2F+1个节点的系统最多允许F个节点同时出现故障。
+
+raft协议的工作原理进行了高度的概括：raft会在node中先选举出leader，leader完全负责replicated  log的管理。leader负责接受所有客户端更新请求，然后复制到follower节点，并在“安全”的时候执行这些请求。如果leader故障，followers会重新选举出新的leader。
+
+##### （1）leader election
+
+在raft协议中， 任何一个node都处于一下三种状态之一：
+
+- leader
+- follower
+- candidate
+
+所有节点启动时都是follower状态；在一段时间内如果没有收到来自leader的心跳，从follower切换到candidate，发起选举；如果收到majority的造成票（含自己的一票）则切换到leader状态；如果发现其他节点比自己先更新，则主动切换到follower。
+
+总之，系统中最多只有一个leader，如果在一段时间里发现没有leader，则大家通过选举-投票选出leader。leader会不停的给follower发心跳消息，表明自己的存活状态。如果leader故障，那么follower会转换成candidate，重新选出leader。
+
+##### （2）term
+
+哪个节点做leader是大家投票选举出来的，每个leader工作一段时间，然后选出新的leader继续负责。这根民主社会的选举很像，每一届新的履职期称之为一届任期，在raft协议中，也是这样的，对应的术语叫***term***。
+
+term（任期）以选举（election）开始，然后就是一段或长或短的稳定工作期（normal  Operation），且任期是递增的。
+
+##### （3）选举过程详解
+
+如果follower在*election timeout*内没有收到来自leader的心跳，（也许此时还没有选出leader，大家都在等；也许leader挂了；也许只是leader与该follower之间网络故障），则会主动发起选举。步骤如下：
+
+- 增加节点本地的 *current term* ，切换到candidate状态
+- 投自己一票
+- 并行给其他节点发送 *RequestVote RPCs*
+- 等待其他节点的回复
+
+在这个过程中，根据来自其他节点的消息，可能出现三种结果
+
+1. 收到majority的投票（含自己的一票），则赢得选举，成为leader
+2. 被告知别人已当选，那么自行切换到follower
+3. 一段时间内没有收到majority投票，则保持candidate状态，重新发出选举
+
+第一种情况，赢得了选举之后，新的leader会立刻给所有节点发消息，广而告之，避免其余节点触发新的选举。在这里，先回到投票者的视角，投票者如何决定是否给一个选举请求投票呢，有以下约束：
+
+- 在任一任期内，单个节点最多只能投一票
+- 候选人知道的信息不能比自己的少（这一部分，后面介绍log replication和safety的时候会详细介绍）
+- first-come-first-served 先来先得
+
+第二种情况，比如有三个节点A B C。A  B同时发起选举，而A的选举消息先到达C，C给A投了一票，当B的消息到达C时，已经不能满足上面提到的第一个约束，即C不会给B投票，而A和B显然都不会给对方投票。A胜出之后，会给B,C发心跳消息，节点B发现节点A的term不低于自己的term，知道有已经有Leader了，于是转换成follower。
+
+第三种情况，没有任何节点获得majority投票。假设总共有四个节点，Node A,B,C,D。其中，Node C、Node D同时成为了candidate，进入了term 4，但Node  A投了NodeD一票，NodeB投了Node C一票，这就出现了平票 split  vote的情况。这个时候大家都在等啊等，直到超时后重新发起选举。如果出现平票的情况，那么就延长了系统不可用的时间（没有leader是不能处理客户端写请求的），因此raft引入了randomized election timeouts来尽量避免平票情况。同时，leader-based  共识算法中，节点的数目都是奇数个，尽量保证majority的出现。
+
+##### （4）log replication
+
+当有了leader，系统应该进入对外工作期了。客户端的一切请求来发送到leader，leader来调度这些并发请求的顺序，并且保证leader与followers状态的一致性。raft中的做法是，将这些请求以及执行顺序告知followers。leader和followers以相同的顺序来执行这些请求，保证状态一致。
+
+在raft中，leader将客户端请求（command）封装到一个个log entry，将这些log  entries复制（replicate）到所有follower节点，然后大家按相同顺序应用（apply）log  entry中的command，则状态肯定是一致的。
+
+当系统（leader）收到一个来自客户端的写请求，到返回给客户端，整个过程从leader的视角来看会经历以下步骤：
+
+- leader 将client的请求命令作为一条新的日志项写入日志。
+
+- leader 发送AppendEntries RPC 给follower 备份 该日志项。
+
+- follower收到leader的AppendEntries RPC，将该日志项记录到日志并反馈ack。
+
+- leader 收到 半数以上的follower 的ack，即认为消息发送成功
+
+- leader 将 该日志项 提交状态机(state machine)处理
+
+- leader 将执行结果返回给 client
+
+- leader 发送AppendEntries RPC 通知 follower 提交状态机
+
+- follower 收到AppendEntries RPC，follower判断该日志项是否已执行，若未执行则执行commitIndex以及之前的日志项。
+
+logs由顺序编号的log entry组成 ，每个log entry除了包含command，还包含产生该log entry时的leader  term。各个节点的日志并不完全一致，raft算法为了保证高可用，并不是强一致性，而是最终一致性，leader会不断尝试给follower发log entries，直到所有节点的log entries都相同。
+
+在上面的流程中，leader只需要日志被复制到大多数节点即可向客户端返回，一旦向客户端返回成功消息，那么系统就必须保证log（其实是log所包含的command）在任何异常的情况下都不会发生回滚。这里有两个词：commit（committed），apply(applied)，前者是指日志被复制到了大多数节点后日志的状态；而后者则是节点将日志应用到状态机，真正影响到节点状态。
+
+##### （5）safety
+
+在上面提到只要日志被复制到majority节点，就能保证不会被回滚，即使在各种异常情况下，这根leader election提到的选举约束有关。在这一部分，主要讨论raft协议在各种各样的异常情况下如何工作的。
+
+衡量一个分布式算法，有许多属性，如
+
+- safety：nothing bad happens,
+- liveness： something good eventually happens.
+
+在任何系统模型下，都需要满足safety属性，即在任何情况下，系统都不能出现不可逆的错误，也不能向客户端返回错误的内容。比如，raft保证被复制到大多数节点的日志不会被回滚，那么就是safety属性。而raft最终会让所有节点状态一致，这属于liveness属性。
+
+##### （6）Election safty
+
+选举安全性，即任一任期内最多一个leader被选出。这一点非常重要，在一个复制集中任何时刻只能有一个leader。系统中同时有多余一个leader，被称之为分裂（ split），这是非常严重的问题，会导致数据的覆盖丢失。在raft中，两点保证了这个属性：
+
+- 一个节点某一任期内最多只能投一票；
+- 只有获得majority投票的节点才会成为leader。
+
+因此，**某一任期内一定只有一个leader**。
+
+#### 5.Consul的安装和配置
+
+```bash
+docker run -d -p 8500:8500 -p 8300:8300 -p 8301:8301 -p8302:8302 -p 8600:8600/udpconsul consul agent -dev -client=0.0.0.0
+
+docker container update --restart=always 容器名字
+```
+
+浏览器访问 http://127.0.0.1:8500
+
+#### 6.go集成Consul
+
+```go
+import (
+	"fmt"
+	"github.com/hashicorp/consul/api"
+)
+// 服务注册
+func Register(address string, port int, name string, tags []string, id string) error {
+	cfg := api.DefaultConfig()
+	cfg.Address = "192.168.1.103:8500"
+
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		panic(err)
+	}
+	//生成对应的检查对象
+	check := &api.AgentServiceCheck{
+		HTTP:                           "http://192.168.1.102:8021/health",
+		Timeout:                        "5s",
+		Interval:                       "5s",
+		DeregisterCriticalServiceAfter: "10s",
+	}
+
+	//生成注册对象
+	registration := new(api.AgentServiceRegistration)
+	registration.Name = name
+	registration.ID = id
+	registration.Port = port
+	registration.Tags = tags
+	registration.Address = address
+	registration.Check = check
+
+	err = client.Agent().ServiceRegister(registration)
+	client.Agent().ServiceDeregister()
+	if err != nil {
+		panic(err)
+	}
+	return nil
+}
+
+func AllServices() {
+	cfg := api.DefaultConfig()
+	cfg.Address = "192.168.1.103:8500"
+
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	data, err := client.Agent().Services()
+	if err != nil {
+		panic(err)
+	}
+	for key, _ := range data {
+		fmt.Println(key)
+	}
+}
+func FilterSerivice() {
+	cfg := api.DefaultConfig()
+	cfg.Address = "192.168.1.103:8500"
+
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	data, err := client.Agent().ServicesWithFilter(`Service == "user-web"`)
+	if err != nil {
+		panic(err)
+	}
+	for key, _ := range data {
+		fmt.Println(key)
+	}
+}
+
+func main() {
+	//_ = Register("192.168.1.102", 8021, "user-web", []string{"mxshop", "bobby"}, "user-web")
+	//AllServices()
+	//FilterSerivice()
+	fmt.Println(fmt.Sprintf(`Service == "%s"`, "user-srv"))
+}
+```
+
+#### 7.将用户GRPC服务集成到Consul中
+
+首先，添加config文件
+
+```
+package config
+
+type MysqlConfig struct{
+	Host string `mapstructure:"host" json:"host"`
+	Port int    `mapstructure:"port" json:"port"`
+	Name string `mapstructure:"db" json:"db"`
+	User string `mapstructure:"user" json:"user"`
+	Password string `mapstructure:"password" json:"password"`
+}
+
+type ConsulConfig struct{
+	Host string `mapstructure:"host" json:"host"`
+	Port int    `mapstructure:"port" json:"port"`
+}
+
+type ServerConfig struct{
+	Name string `mapstructure:"name" json:"name"`
+	MysqlInfo MysqlConfig `mapstructure:"mysql" json:"mysql"`
+	ConsulInfo ConsulConfig `mapstructure:"consul" json:"consul"`
+}
+
+type NacosConfig struct {
+	Host      string `mapstructure:"host"`
+	Port      uint64    `mapstructure:"port"`
+	Namespace string `mapstructure:"namespace"`
+	User      string `mapstructure:"user"`
+	Password  string `mapstructure:"password"`
+	DataId    string `mapstructure:"dataid"`
+	Group     string `mapstructure:"group"`
+}
+```
+
+对上面配置进行初始化。
+
+首先，viper和zap从nacos中读取yml或者json格式的配置，进行初始化
+
+```go
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/nacos-group/nacos-sdk-go/clients"
+	"github.com/nacos-group/nacos-sdk-go/common/constant"
+	"github.com/nacos-group/nacos-sdk-go/vo"
+	"github.com/spf13/viper"
+	"go.uber.org/zap"
+	"mxshop_srvs/user_srv/global"
+)
+func GetEnvInfo(env string) bool {
+	viper.AutomaticEnv()
+	return viper.GetBool(env)
+}
+
+func InitConfig(){
+	//从配置文件中读取出对应的配置
+	debug := GetEnvInfo("MXSHOP_DEBUG")
+	configFilePrefix := "config"
+	configFileName := fmt.Sprintf("user_srv/%s-pro.yaml", configFilePrefix)
+	if debug {
+		configFileName = fmt.Sprintf("user_srv/%s-debug.yaml", configFilePrefix)
+	}
+
+	v := viper.New()
+	//文件的路径如何设置
+	v.SetConfigFile(configFileName)
+	if err := v.ReadInConfig(); err != nil {
+		panic(err)
+	}
+	//这个对象如何在其他文件中使用 - 全局变量
+	if err := v.Unmarshal(&global.NacosConfig); err != nil {
+		panic(err)
+	}
+	zap.S().Infof("配置信息: %v", global.NacosConfig)
+
+	//从nacos中读取配置信息
+	sc := []constant.ServerConfig{
+		{
+			IpAddr: global.NacosConfig.Host,
+			Port: global.NacosConfig.Port,
+		},
+	}
+
+	cc := constant.ClientConfig {
+		NamespaceId:         global.NacosConfig.Namespace, // 如果需要支持多namespace，我们可以场景多个client,它们有不同的NamespaceId
+		TimeoutMs:           5000,
+		NotLoadCacheAtStart: true,
+		LogDir:              "tmp/nacos/log",
+		CacheDir:            "tmp/nacos/cache",
+		RotateTime:          "1h",
+		MaxAge:              3,
+		LogLevel:            "debug",
+	}
+
+	configClient, err := clients.CreateConfigClient(map[string]interface{}{
+		"serverConfigs": sc,
+		"clientConfig":  cc,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	content, err := configClient.GetConfig(vo.ConfigParam{
+		DataId: global.NacosConfig.DataId,
+		Group:  global.NacosConfig.Group})
+
+	if err != nil {
+		panic(err)
+	}
+	//fmt.Println(content) //字符串 - yaml
+	//想要将一个json字符串转换成struct，需要去设置这个struct的tag
+	err = json.Unmarshal([]byte(content), &global.ServerConfig)
+	if err != nil{
+		zap.S().Fatalf("读取nacos配置失败： %s", err.Error())
+	}
+	fmt.Println(&global.ServerConfig)
+}
+```
+
+其次，将mysql注册
+
+```go
+import (
+	"log"
+	"mxshop_srvs/user_srv/global"
+	"os"
+	"time"
+	"fmt"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
+	"gorm.io/driver/mysql"
+)
+
+func InitDB(){
+	c := global.ServerConfig.MysqlInfo
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+		c.User, c.Password, c.Host, c.Port, c.Name)
+	newLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
+		logger.Config{
+			SlowThreshold: time.Second,   // 慢 SQL 阈值
+			LogLevel:      logger.Silent, // Log level
+			Colorful:      true,         // 禁用彩色打印
+		},
+	)
+
+	// 全局模式
+	var err error
+	global.DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+		NamingStrategy: schema.NamingStrategy{
+			SingularTable: true,
+		},
+		Logger: newLogger,
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+```
+
+main函数的编写，主要进行各种配置初始化，服务注册和服务健康检查
+
+```go
+package main
+
+import (
+	"flag"
+	"fmt"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"github.com/satori/go.uuid"
+
+	"mxshop_srvs/user_srv/handler"
+	"mxshop_srvs/user_srv/initialize"
+	"mxshop_srvs/user_srv/proto"
+	"mxshop_srvs/user_srv/global"
+	"mxshop_srvs/user_srv/utils"
+	"github.com/hashicorp/consul/api"
+)
+
+func main() {
+	IP := flag.String("ip", "0.0.0.0", "ip地址")
+	Port := flag.Int("port", 0, "端口号")
+
+	//初始化
+	initialize.InitLogger()
+	initialize.InitConfig()
+	initialize.InitDB()
+	zap.S().Info(global.ServerConfig)
+
+	flag.Parse()
+	zap.S().Info("ip: ", *IP)
+	if *Port == 0{
+		*Port, _ = utils.GetFreePort()
+	}
+
+	zap.S().Info("port: ", *Port)
+
+	server := grpc.NewServer()
+	proto.RegisterUserServer(server, &handler.UserServer{})
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *IP, *Port))
+	if err != nil {
+		panic("failed to listen:" + err.Error())
+	}
+	//注册服务健康检查
+	grpc_health_v1.RegisterHealthServer(server, health.NewServer())
+
+	//服务注册
+	cfg := api.DefaultConfig()
+	cfg.Address = fmt.Sprintf("%s:%d", global.ServerConfig.ConsulInfo.Host,
+		global.ServerConfig.ConsulInfo.Port)
+
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		panic(err)
+	}
+	//生成对应的检查对象
+	check := &api.AgentServiceCheck{
+		GRPC:                           fmt.Sprintf("192.168.0.103:%d", *Port),
+		Timeout:                        "5s",
+		Interval:                       "5s",
+		DeregisterCriticalServiceAfter: "15s",
+	}
+
+	//生成注册对象
+	registration := new(api.AgentServiceRegistration)
+	registration.Name = global.ServerConfig.Name
+	serviceID := fmt.Sprintf("%s", uuid.NewV4())
+	registration.ID = serviceID
+	registration.Port = *Port
+	registration.Tags = []string{"imooc", "bobby", "user", "srv"}
+	registration.Address = "192.168.0.103"
+	registration.Check = check
+	//1. 如何启动两个服务
+	//2. 即使我能够通过终端启动两个服务，但是注册到consul中的时候也会被覆盖
+	err = client.Agent().ServiceRegister(registration)
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		err = server.Serve(lis)
+		if err != nil {
+			panic("failed to start grpc:" + err.Error())
+		}
+	}()
+
+	//接收终止信号
+	quit := make(chan os.Signal)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	if err = client.Agent().ServiceDeregister(serviceID); err != nil{
+		zap.S().Info("注销失败")
+	}
+	zap.S().Info("注销成功")
+}
+```
+
+#### 8.将web层服务集成到consul中
+
+从注册中心获取用户服务的信息，即获取用户服务的ip和端口
+
+获取信息的代码如下：
+
+```go
+func InitSrvConn2()  {
+	//从注册中心获取到用户服务的信息
+	cfg := api.DefaultConfig()
+	consulInfo := global.ServerConfig.ConsulInfo
+	cfg.Address = fmt.Sprintf("%s:%d", consulInfo.Host, consulInfo.Port)
+
+	userSrvHost := ""
+	userSrvPort := 0
+	client, err := api.NewClient(cfg)
+	if err != nil {
+		panic(err)
+	}
+
+	data, err := client.Agent().ServicesWithFilter(fmt.Sprintf("Service == \"%s\"", global.ServerConfig.UserSrvInfo.Name))
+	//data, err := client.Agent().ServicesWithFilter(fmt.Sprintf(`Service == "%s"`, global.ServerConfig.UserSrvInfo.Name))
+	if err != nil {
+		panic(err)
+	}
+	for _, value := range data{
+		userSrvHost = value.Address
+		userSrvPort = value.Port
+		break
+	}
+	if userSrvHost == ""{
+		zap.S().Fatal("[InitSrvConn] 连接 【用户服务失败】")
+		return
+	}
+
+	//拨号连接用户grpc服务器 跨域的问题 - 后端解决 也可以前端来解决
+	userConn, err := grpc.Dial(fmt.Sprintf("%s:%d", userSrvHost, userSrvPort), grpc.WithInsecure())
+	if err != nil {
+		zap.S().Errorw("[GetUserList] 连接 【用户服务失败】",
+			"msg", err.Error(),
+		)
+	}
+	//1. 后续的用户服务下线了 2. 改端口了 3. 改ip了 负载均衡来做
+
+	//2. 已经事先创立好了连接，这样后续就不用进行再次tcp的三次握手
+	//3. 一个连接多个groutine共用，性能 - 连接池
+	userSrvClient := proto.NewUserClient(userConn)
+	global.UserSrvClient = userSrvClient
+}
+```
+
+主要步骤：
+
+```go
+引入 github.com/hashicorp/consul/api
+
+consulInfo = global.ServerConfig.COnsulInfo
+// 从注册中心获取用户服务信息
+cfg :=api.DefaultConfig()
+// 获取地址
+cfg.Address = fmt.Sprintf("%s:%d", consulInfo.Host, consulInfo.Port);
+// 装载配置
+client, err := api.NewClient(cfg)
+data, err := client.Agent().ServicesWithFilter(fmt.Sprintf("Service == \"%s\"", global.ServerConfig.UserSrvInfo))
+// 拨号连接
+userConn, err := grpc.Dial(fmt.Sprintf("%s:%d" , userSrvHost,global.ServerConfig.UserSrvInfo.Port), grpc.withInsecure())
+```
+
+完整代码
+
+```go
+cfg := api.DefaultConfig()
+consulInfo := global.ServerConfig.ConsulInfo
+cfg.Address = fmt.Sprintf("%s:%d", consulInfo.Host, consulInfo.Port)
+
+userSrvHost := ""
+userSrvPort := 0
+client, err := api.NewClient(cfg)
+if err != nil {
+	panic(err)
+}
+
+data, err := client.Agent( ).ServiceswithFilter(fmt.Sprintf("Service == \"%s\"", global.ServerConfig.UserSrvInfo))
+if err != nil {
+	panic(err)
+}
+
+for _, value := range data{
+	userSrvHost = value.Address
+	userSrvPort = value.Port
+	break
+}
+
+//拨号连接用户grpc服务器跨域的问题–后端解决也可以前端来解决
+userConn,err := grpc.Dial(fmt.Sprintf("%s:%d" , userSrvHost,global.ServerConfig.UserSrvInfo.Port), grpc.withInsecure())
+if err != nil {
+    zap.s( ).Errorw( msg: " [GetUserList] 连接【用户服务失败】"，"msg" , err.Error( ),
+    )
+}
+
+```
+
+### 五、gin集成grpc的负载均衡
+
+引入 
+
+```go
+_ "github.com/mbobakov/grpc-consul-resolver" // It's important
+```
+
+重新修改初始化连接代码：
+
+```go
+func InitSrvConn(){
+	consulInfo := global.ServerConfig.ConsulInfo
+	userConn, err := grpc.Dial(
+		fmt.Sprintf("consul://%s:%d/%s?wait=14s", consulInfo.Host, consulInfo.Port, global.ServerConfig.UserSrvInfo.Name),
+		grpc.WithInsecure(),
+		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy": "round_robin"}`),
+	)
+	if err != nil {
+		zap.S().Fatal("[InitSrvConn] 连接 【用户服务失败】")
+	}
+
+	userSrvClient := proto.NewUserClient(userConn)
+	global.UserSrvClient = userSrvClient
+}
+```
+
+### 六、分布式配置中心
+
+#### 1.为什么需要分布式配置中心
+
+我们现在有一个项目，使用gin进行开发的，配置文件的话我们知道是一个叫做config.yaml的文件。我们也知道这个配置文件会在项目启动的时候被加载到内存中进行使用的。
+
+考虑两种情况:
+
+a.添加配置项
+
+- 你现在的用户服务有10个部署实例，那么添加配置项你得去十个地方修改配置文件还得重新启动等。
+- 即使go的viper能完成修改配置文件自动生效，那么你得考虑其他语言是否也能做到这点，其他的服务是否也一定会使用viper?
+  imooc
+
+b.修改配置项
+
+- 大量的服务可能会使用同一个配置，比如我要更好jwt的secrect，这么多实例怎么办?
+
+c.开发、测试、生产环境如何隔离:
+
+- 前面虽然已经介绍了viper，但是依然一样的问题，这么多服务如何统一这种考虑因素?
+
+#### 2.配置中心技术选型
+
+目前最主流的分布式配置中心主要是有spring cloud config、 apollo和nacos，spring cloud属于java的spring体系，我们就考虑apollo和nacos。apollo与nacos都为目前比较流行且维护活跃的2个配置中心。apollo是携程开源，nacos是阿里开源
+
+- apollo大而全，功能完善。nacos小而全，可以对比成django和flask的区别
+- 部署nacos更加简单。
+- nacos不止支持配置中心还支持服务注册和发现。
+- 都支持各种语言，不过apollo是第三方支持的，nacos是官方支持各种语言
+
+#### 3.Nacos的安装
+
+```
+docker run --name nacos-standalone -e NODE=standalone -e WM_XIS=512m -e JWMA_XN=512m -e VM_XN=256m -p 8848:8848 -d nacos/nacos-server : latest
+```
+
+#### 4.gin集成Nacos
+
+将Nacos中的配置映射成go的struct，因为go本身支持将json的字符串反射成struct。将nacos的yml配置文件转换为json格式。
+
+```json
+{
+	"name" : "user-web1",
+	"port": 8021,
+	"user_srv" :{
+		"host": "192.168.1.102",
+		"port": 50051,
+		"name" : "user-srv"
+	}，
+	"jwt": {
+	"key": "5$!UEmvB#nRBCIwab#Sy!zofKEOGLRtE"}，
+	"sms" : {
+		"key" :"LTAI4FzGkwzJyrKfCex9kpP1",
+		"secrect": "r5aWSxybxkuT4ROcwpRqqusXtcwxt5",
+		"expire": 300
+	}
+	"redis":{
+		"host": "192.168.1.103",
+		"port": 6379
+	},
+	"consul" : {
+		"host":"192.168.1.103"，
+		"port": 8500
+	}
+}
+```
+
+定义对应的config
+
+```go
+type ConsulConfig struct {
+	Host string `mapstructure:"host" json:"host"`
+	Port int    `mapstructure:"port" json:"port"`
+}
+
+type RedisConfig struct {
+	Host   string `mapstructure:"host" json:"host"`
+	Port   int    `mapstructure:"port" json:"port"`
+	Expire int    `mapstructure:"expire" json:"expire"`
+}
+
+type ServerConfig struct {
+	Name        string        `mapstructure:"name" json:"name"`
+	Host        string         `mapstructure:"host" json:"host"`
+	Tags        []string       `mapstructure:"tags" json:"tags"`
+	Port        int           `mapstructure:"port" json:"port"`
+	UserSrvInfo UserSrvConfig `mapstructure:"user_srv" json:"user_srv"`
+	JWTInfo     JWTConfig     `mapstructure:"jwt" json:"jwt"`
+	AliSmsInfo  AliSmsConfig  `mapstructure:"sms" json:"sms"`
+	RedisInfo   RedisConfig   `mapstructure:"redis" json:"redis"`
+	ConsulInfo  ConsulConfig  `mapstructure:"consul" json:"consul"`
+}
+
+type NacosConfig struct {
+	Host      string `mapstructure:"host"`
+	Port      uint64    `mapstructure:"port"`
+	Namespace string `mapstructure:"namespace"`
+	User      string `mapstructure:"user"`
+	Password  string `mapstructure:"password"`
+	DataId    string `mapstructure:"dataid"`
+	Group     string `mapstructure:"group"`
+}
+```
+
+从nacos上获取，初始化
+
+```go
+
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/nacos-group/nacos-sdk-go/clients"
+	"github.com/nacos-group/nacos-sdk-go/common/constant"
+	"github.com/nacos-group/nacos-sdk-go/vo"
+	"github.com/spf13/viper"
+	"go.uber.org/zap"
+
+	"mxshop-api/user-web/global"
+)
+
+func GetEnvInfo(env string) bool {
+	viper.AutomaticEnv()
+	return viper.GetBool(env)
+	//刚才设置的环境变量 想要生效 我们必须得重启goland
+}
+
+func InitConfig(){
+	debug := GetEnvInfo("MXSHOP_DEBUG")
+	configFilePrefix := "config"
+	configFileName := fmt.Sprintf("user-web/%s-pro.yaml", configFilePrefix)
+	if debug {
+		configFileName = fmt.Sprintf("user-web/%s-debug.yaml", configFilePrefix)
+	}
+
+	v := viper.New()
+	//文件的路径如何设置
+	v.SetConfigFile(configFileName)
+	if err := v.ReadInConfig(); err != nil {
+		panic(err)
+	}
+	//这个对象如何在其他文件中使用 - 全局变量
+	if err := v.Unmarshal(global.NacosConfig); err != nil {
+		panic(err)
+	}
+	zap.S().Infof("配置信息: &v", global.NacosConfig)
+
+	//从nacos中读取配置信息
+	sc := []constant.ServerConfig{
+		{
+			IpAddr: global.NacosConfig.Host,
+			Port: global.NacosConfig.Port,
+		},
+	}
+
+	cc := constant.ClientConfig {
+		NamespaceId:         global.NacosConfig.Namespace, // 如果需要支持多namespace，我们可以场景多个client,它们有不同的NamespaceId
+		TimeoutMs:           5000,
+		NotLoadCacheAtStart: true,
+		LogDir:              "tmp/nacos/log",
+		CacheDir:            "tmp/nacos/cache",
+		RotateTime:          "1h",
+		MaxAge:              3,
+		LogLevel:            "debug",
+	}
+
+	configClient, err := clients.CreateConfigClient(map[string]interface{}{
+		"serverConfigs": sc,
+		"clientConfig":  cc,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	content, err := configClient.GetConfig(vo.ConfigParam{
+		DataId: global.NacosConfig.DataId,
+		Group:  global.NacosConfig.Group})
+
+	if err != nil {
+		panic(err)
+	}
+	//fmt.Println(content) //字符串 - yaml
+	//想要将一个json字符串转换成struct，需要去设置这个struct的tag
+	err = json.Unmarshal([]byte(content), &global.ServerConfig)
+	if err != nil{
+		zap.S().Fatalf("读取nacos配置失败： %s", err.Error())
+	}
+	fmt.Println(&global.ServerConfig)
+
+}
+```
+
