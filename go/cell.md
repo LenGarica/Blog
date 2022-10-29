@@ -105,7 +105,7 @@ type g struct {
 }
 ```
 
-![gorun_struct](F:\blog\picture\gorun_struct.png)
+![gorun_struct](\blog\picture\gorun_struct.png)
 
 ## 二、P结构体
 
@@ -115,11 +115,11 @@ M：线程
 
 P：本地队列
 
-![GMP](F:\blog\picture\GMP.png)
+![GMP](\blog\picture\GMP.png)
 
 ## 三、GMP模型
 
-![GMP模型](F:\blog\picture\GMP模型.png)
+![GMP模型](\blog\picture\GMP模型.png)
 
 P是M与G之间的中介，P持有一些G，使得每次获取G的时候不用从全局找，大大减少了并发冲突的情况。如果本地也没有G，全局也没有G，那么可以使用窃取式工作分配机制，从其他P中进行窃取。
 
