@@ -1,3 +1,5 @@
+<img src="./picture/sword.png">
+
 ## 一、博客内容说明
 
 文档涉及到算法刷题、Java Web和大数据。

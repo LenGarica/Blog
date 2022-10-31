@@ -1179,3 +1179,25 @@ func InitConfig(){
 ### 七、文件服务
 
 商品微服务需要使用到本文存储服务，因此本项目使用阿里云OSS，首先需要在阿里云上开通oss服务。
+
+#### 1.阿里云OSS对象存储作用
+
+- 提供标准、低频、归档多种类型，通过生命周期自动化实现数据类型转换与过期管理，覆盖从热到冷多种存储场景。
+- 提供RESTFul API、控制台、多种开发语言的SDK、命令行工具、图形化工具等多种使用方式，您可以随时随地通过网络管理您的数据。
+- 提供多种数据处理能力，如图片处理、视频截帧、文档预览、图片场景识别、人脸识别、SQL就地查询等，并无缝对接Hadoop生态、以及阿里云函数计算、EMR、DataLakeAnalytics、BatchCompute、MaxCompute、DBS等产品，满足企业数据分析与管理的需求。
+- 支持按量付费模式，按实际使用量付费，无需提前一次性投入。同时，自动弹性扩展，不限用户存储的容量和文件数目，满足EB级海量存储需求。
+- 支持服务端加密、客户端加密、防盗链、IP黑白名单、细粒度权限管控、日志审计、WORM特性，并获得多项合规认证，包括SEC、FINRA等，满足企业数据安全与合规要求。
+
+#### 2.阿里云OSS资源术语
+
+阿里云支持多种主流的SDK。
+
+| 中文      | 英文      | 说明                                                         |
+| --------- | --------- | ------------------------------------------------------------ |
+| 存储空间  | Bucket    | 存储空间是您用于存储对象（Object）的容器，所有的对象都必须隶属于某个存储空间。 |
+| 对象/文件 | Object    | 对象是 OSS 存储数据的基本单元，也被称为OSS的文件。对象由元信息（Object Meta）、用户数据（Data）和文件名（Key）组成。对象由存储空间内部唯一的Key来标识。 |
+| 地域      | Region    | 地域表示 OSS 的数据中心所在物理位置。您可以根据费用、请求来源等综合选择数据存储的地域。详情请查看[OSS已经开通的Region](https://help.aliyun.com/document_detail/31837.htm#concept-zt4-cvy-5db)。 |
+| 访问域名  | Endpoint  | Endpoint 表示OSS对外服务的访问域名。OSS以HTTP RESTful API的形式对外提供服务，当访问不同地域的时候，需要不同的域名。通过内网和外网访问同一个地域所需要的域名也是不同的。具体的内容请参见[各个Region对应的Endpoint](https://help.aliyun.com/document_detail/31837.htm#concept-zt4-cvy-5db)。 |
+| 访问密钥  | AccessKey | AccessKey，简称 AK，指的是访问身份验证中用到的AccessKeyId 和AccessKeySecret。OSS通过使用AccessKeyId  和AccessKeySecret对称加密的方法来验证某个请求的发送者身份。AccessKeyId用于标识用户，AccessKeySecret是用户用于加密签名字符串和OSS用来验证签名字符串的密钥，其中AccessKeySecret                                 必须保密。 |
+
+3.
