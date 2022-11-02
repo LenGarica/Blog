@@ -1200,4 +1200,1018 @@ func InitConfig(){
 | 访问域名  | Endpoint  | Endpoint 表示OSS对外服务的访问域名。OSS以HTTP RESTful API的形式对外提供服务，当访问不同地域的时候，需要不同的域名。通过内网和外网访问同一个地域所需要的域名也是不同的。具体的内容请参见[各个Region对应的Endpoint](https://help.aliyun.com/document_detail/31837.htm#concept-zt4-cvy-5db)。 |
 | 访问密钥  | AccessKey | AccessKey，简称 AK，指的是访问身份验证中用到的AccessKeyId 和AccessKeySecret。OSS通过使用AccessKeyId  和AccessKeySecret对称加密的方法来验证某个请求的发送者身份。AccessKeyId用于标识用户，AccessKeySecret是用户用于加密签名字符串和OSS用来验证签名字符串的密钥，其中AccessKeySecret                                 必须保密。 |
 
-3.
+#### 3.整合OSS
+
+安装OSS
+
+```go
+go get github.com/aliyun/aliyun-oss-go-sdk/oss
+```
+
+引入
+
+```go
+import (
+  "github.com/aliyun/aliyun-oss-go-sdk/oss"
+)
+```
+
+##### （1）创建Client
+
+Client是OSS的Go客户端，用于管理存储空间和文件等OSS资源。 新建Client时，需要指定Endpoint（Endpoint表示OSS对外服务的访问域名）。
+
+| Region        | Region ID       | 外网Endpoint                 | 内网Endpoint                          |
+| ------------- | --------------- | ---------------------------- | ------------------------------------- |
+| 华东1（杭州） | oss-cn-hangzhou | oss-cn-hangzhou.aliyuncs.com | oss-cn-hangzhou-internal.aliyuncs.com |
+
+```go
+// oss.Timeout(10, 120)表示设置HTTP连接超时时间为10秒（默认值为30秒），HTTP读写超时时间为120秒（默认值为60秒）。0表示永不超时（不推荐使用）
+client, err := oss.New("<yourEndpoint>", "<yourAccessKeyId>", "<yourAccessKeySecret>", oss.Timeout(10, 120))
+if err != nil {
+    fmt.Println("Error:", err)
+    os.Exit(-1)
+}
+```
+
+##### （2）创建与获取bucket
+
+```
+// 1. 当没有手动在阿里云oss上创建bucket时，则可以调用CreateBucket(bucketName)函数来创建
+// yourBucketName填写Bucket名称。
+bucketName := "yourBucketName"
+// 创建存储空间。
+err = client.CreateBucket(bucketName)
+if err != nil {
+    handleError(err)
+}
+
+// 2. 当已经存在bucket时，可以直接获取bucket进行操作
+// 获取存储空间。
+bucket, err := client.Bucket(bucketName)
+if err != nil {
+    handleError(err)
+}
+```
+
+##### （3）上传文件
+
+```go
+ // yourEndpoint填写Bucket对应的Endpoint，以华东1（杭州）为例，填写为https://oss-cn-hangzhou.aliyuncs.com。其它Region请按实际情况填写。
+    endpoint := "yourEndpoint"
+    // 阿里云账号AccessKey拥有所有API的访问权限，风险很高。强烈建议您创建并使用RAM用户进行API访问或日常运维，请登录RAM控制台创建RAM用户。
+    accessKeyId := "yourAccessKeyId"
+    accessKeySecret := "yourAccessKeySecret"
+    // yourBucketName填写存储空间名称。
+    bucketName := "yourBucketName"
+    // yourObjectName填写Object完整路径，完整路径不包含Bucket名称。例如，first.jpg
+    objectName := "yourObjectName"
+    // yourLocalFileName填写本地文件的完整路径。
+    localFileName := "yourLocalFileName"
+    // 创建OSSClient实例。
+    client, err := oss.New(endpoint, accessKeyId, accessKeySecret)
+    if err != nil {
+        handleError(err)
+    }
+    // 获取存储空间。
+    bucket, err := client.Bucket(bucketName)
+    if err != nil {
+        handleError(err)
+    }
+    // 上传文件。
+    err = bucket.PutObjectFromFile(objectName, localFileName)
+    if err != nil {
+        handleError(err)
+    }
+```
+
+##### （4）下载文件
+
+```go
+  // yourObjectName填写Object完整路径，完整路径中不能包含Bucket名称
+    objectName := "yourObjectName"
+    // yourDownloadedFileName填写本地文件的完整路径。
+    downloadedFileName := "yourDownloadedFileName"
+    // 创建OSSClient实例。
+    client, err := oss.New(endpoint, accessKeyId, accessKeySecret)
+    if err != nil {
+        handleError(err)
+    }
+    // 获取存储空间。
+    bucket, err := client.Bucket(bucketName)
+    if err != nil {
+        handleError(err)
+    }
+    // 下载文件。
+    err = bucket.GetObjectToFile(objectName, downloadedFileName)
+    if err != nil {
+        handleError(err)
+    }
+```
+
+##### （5）列举文件
+
+```go
+ // yourEndpoint填写Bucket对应的Endpoint，以华东1（杭州）为例，填写为https://oss-cn-hangzhou.aliyuncs.com。其它Region请按实际情况填写。
+    endpoint := "yourEndpoint"
+    // 阿里云账号AccessKey拥有所有API的访问权限，风险很高。强烈建议您创建并使用RAM用户进行API访问或日常运维，请登录RAM控制台创建RAM用户。
+    accessKeyId := "yourAccessKeyId"
+    accessKeySecret := "yourAccessKeySecret"
+    // 创建OSSClient实例。
+    client, err := oss.New("yourEndpoint", "yourAccessKeyId", "yourAccessKeySecret")
+    if err != nil {
+        HandleError(err)
+    }
+    // 获取存储空间。
+    bucketName := "yourBucketName"
+    bucket, err := client.Bucket(bucketName)
+    if err != nil {
+        handleError(err)
+    }
+    // 列举文件。
+    marker := ""
+    for {
+        //oss.Marker(marker)这句话标明本次列举文件的起点
+        lsRes, err := bucket.ListObjects(oss.Marker(marker))
+        // 设置列举文件的最大个数，并列举文件。
+        // lsRes, err := bucket.ListObjects(oss.MaxKeys(200))
+
+        if err != nil {
+            HandleError(err)
+        }
+        // 打印列举文件，默认情况下一次返回100条记录。 
+        for _, object := range lsRes.Objects {
+            fmt.Println("Bucket: ", object.Key)
+        }
+        if lsRes.IsTruncated {
+            marker = lsRes.NextMarker
+        } else {
+            break
+        }
+    }
+```
+
+##### （6）删除文件
+
+```go
+ // yourEndpoint填写Bucket对应的Endpoint，以华东1（杭州）为例，填写为https://oss-cn-hangzhou.aliyuncs.com。其它Region请按实际情况填写。
+    endpoint := "yourEndpoint"
+    // 阿里云账号AccessKey拥有所有API的访问权限，风险很高。强烈建议您创建并使用RAM用户进行API访问或日常运维，请登录RAM控制台创建RAM用户。
+    accessKeyId := "yourAccessKeyId"
+    accessKeySecret := "yourAccessKeySecret"
+    // yourBucketName填写存储空间名称。
+    bucketName := "yourBucketName"
+    // yourObjectName填写Object完整路径，完整路径中不能包含Bucket名称。
+    objectName := "yourObjectName"
+    // 创建OSSClient实例。
+    client, err := oss.New(endpoint, accessKeyId, accessKeySecret)
+    if err != nil {
+        handleError(err)
+    }
+    // 获取存储空间。
+    bucket, err := client.Bucket(bucketName)
+    if err != nil {
+        handleError(err)
+    }
+    // 删除文件。
+    err = bucket.DeleteObject(objectName)
+    if err != nil {
+        handleError(err)
+    }
+```
+
+##### （7）直传OSS
+
+当出现大文件上传时，可以直接让浏览器端直传文件到OSS上。可以先让浏览器发起请求，gin发送给浏览器一个签名，浏览器带着这个签名向OSS发起文件直传。客户端进行表单直传到OSS时，会从浏览器向OSS发送带有Origin的请求消息。OSS对带有Origin头的请求消息会进行跨域规则(CORS)的验证。因此需要为Bucket设置跨域规则以支持Post方法。
+
+1.登录OSS管理控制台。
+
+2.单击Bucket列表，之后单击目标Bucket名称。
+
+3.单击权限管理>跨域设置，在跨域设置区域单击设置。
+
+4.单击创建规则，配置如下图所示。
+
+### 八、库存服务
+
+电商系统中最重要的一点就是库存服务，库存服务与商品服务、订单服务、支付服务都有着极强的相关性。为了防止恶意下单，需要有一个超时机制和库存归还的步骤。
+
+<img src="../picture/inventory.png">
+
+#### 1.库存扣减
+
+库存扣减的时候，需要根据下单的商品id查询是否有库存，如果没有，则直接返回没有库存信息，如果有，则判断库存是否充足，库存充足再扣减。
+
+**本地事务问题**
+
+例如，一个订单有三件商品，1号商品扣减10份,  2号商品扣减5份, 3号商品扣减20份。必须保证三件商品都扣减成功，要么都失败。因此需要手动开启事务。
+
+```go
+//开始事务
+tx := db.Begin()
+//在事务中家行一些 db 操作(从这里开始，您应该使用‘tx’而不是'db')
+tx.Create(...)
+// ...
+//遇到错误时回滚事务
+tx.Rollback()
+//否则，提交事务
+tx.Commit()
+```
+
+```go
+//扣减库存，本地事务[1 : 10,2:5，3:20]
+//数据库基本的一个应用场景︰数据库事务
+tx := global.DB.Begin()
+for _, goodInfo := range req.GoodsInfo {
+	var inv model.Inventory
+	if result := global.DB.First(&inv，goodInfo.GoodsId); result.RowsAffected == 0 {
+        tx.Rollback()//回滚之前的操作
+		return nil,status.Errorf(codes.InvalidArgument,format: "没有库存信息")
+	}
+	//判断库存是否充足
+	if inv. Stocks < goodInfo.Num {
+        tx.Rollback()//回滚之前的操作
+		return nil,status.Errorf(codes.ResourceExhausted,format: "库存不足")
+	}
+	//扣减
+	inv.Stocks -= goodInfo.Num
+    tx.Save(&inv)
+}
+tx.Commit()//需要自己手动提交操作
+return &emptypb.Empty{}, nil
+
+```
+
+**并发问题**
+
+例如，两个线程或者两个用户对同一个商品进行下单的时候，可能会造成超售超卖的问题，并发问题无法正确扣减。这里需要使用到锁，因为本项目是微服务式的，这里使用分布式锁。
+
+```go
+// var m sync.Mutex
+func (*InventoryServer) Sell(ctx context.Context, req *proto.SellInfo) (*emptypb.Empty, error) {
+	//扣减库存， 本地事务 [1:10,  2:5, 3: 20]
+	//数据库基本的一个应用场景：数据库事务
+	//并发情况之下 可能会出现超卖 1
+	client := goredislib.NewClient(&goredislib.Options{
+		Addr: "192.168.0.104:6379",
+	})
+	pool := goredis.NewPool(client) // or, pool := redigo.NewPool(...)
+	rs := redsync.New(pool)
+	// 开启事务
+	tx := global.DB.Begin()
+	//m.Lock() //获取锁 这把锁有问题吗？  假设有10w的并发， 这里并不是请求的同一件商品  这个锁就没有问题了吗？
+
+	//这个时候应该先查询表，然后确定这个订单是否已经扣减过库存了，已经扣减过了就别扣减了
+	//并发时候会有漏洞， 同一个时刻发送了重复了多次， 使用锁，分布式锁
+	sellDetail := model.StockSellDetail{
+		OrderSn: req.OrderSn,
+		Status:  1,
+	}
+	var details []model.GoodsDetail
+	for _, goodInfo := range req.GoodsInfo {
+		details = append(details, model.GoodsDetail{
+			Goods: goodInfo.GoodsId,
+			Num: goodInfo.Num,
+		})
+
+		var inv model.Inventory
+		//if result := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(&model.Inventory{Goods:goodInfo.GoodsId}).First(&inv); result.RowsAffected == 0 {
+		//	tx.Rollback() //回滚之前的操作
+		//	return nil, status.Errorf(codes.InvalidArgument, "没有库存信息")
+		//}
+
+		//for {
+        // 获取锁
+		mutex := rs.NewMutex(fmt.Sprintf("goods_%d", goodInfo.GoodsId))
+		if err := mutex.Lock(); err != nil {
+			return nil, status.Errorf(codes.Internal, "获取redis分布式锁异常")
+		}
+
+		if result := global.DB.Where(&model.Inventory{Goods:goodInfo.GoodsId}).First(&inv); result.RowsAffected == 0 {
+			tx.Rollback() //回滚之前的操作
+			return nil, status.Errorf(codes.InvalidArgument, "没有库存信息")
+		}
+		//判断库存是否充足
+		if inv.Stocks < goodInfo.Num {
+			tx.Rollback() //回滚之前的操作
+			return nil, status.Errorf(codes.ResourceExhausted, "库存不足")
+		}
+		//扣减， 会出现数据不一致的问题 - 锁，分布式锁
+		inv.Stocks -= goodInfo.Num
+		tx.Save(&inv)
+
+		if ok, err := mutex.Unlock(); !ok || err != nil {
+			return nil, status.Errorf(codes.Internal, "释放redis分布式锁异常")
+		}
+			//update inventory set stocks = stocks-1, version=version+1 where goods=goods and version=version
+			//这种写法有瑕疵，为什么？
+			//零值 对于int类型来说 默认值是0 这种会被gorm给忽略掉
+			//if result := tx.Model(&model.Inventory{}).Select("Stocks", "Version").Where("goods = ? and version= ?", goodInfo.GoodsId, inv.Version).Updates(model.Inventory{Stocks: inv.Stocks, Version: inv.Version+1}); result.RowsAffected == 0 {
+			//	zap.S().Info("库存扣减失败")
+			//}else{
+			//	break
+			//}
+		//}
+		//tx.Save(&inv)
+	}
+	sellDetail.Detail = details
+	//写selldetail表
+	if result := tx.Create(&sellDetail); result.RowsAffected == 0 {
+		tx.Rollback()
+		return nil, status.Errorf(codes.Internal, "保存库存扣减历史失败")
+	}
+	tx.Commit() // 需要自己手动提交操作
+	//m.Unlock() //释放锁
+	return &emptypb.Empty{}, nil
+}
+```
+
+#### 2.库存归还
+
+有多种情况： 1：订单超时归还 2. 订单创建失败，归还之前扣减的库存 3. 手动归还
+
+```go
+func (*InventoryServer) Reback(ctx context.Context, req *proto.SellInfo) (*emptypb.Empty, error) {
+	//库存归还： 1：订单超时归还 2. 订单创建失败，归还之前扣减的库存 3. 手动归还
+	tx := global.DB.Begin()
+    m.Lock()
+	for _, goodInfo := range req.GoodsInfo {
+		var inv model.Inventory
+		if result := global.DB.Where(&model.Inventory{Goods:goodInfo.GoodsId}).First(&inv); result.RowsAffected == 0 {
+			tx.Rollback() //回滚之前的操作
+			return nil, status.Errorf(codes.InvalidArgument, "没有库存信息")
+		}
+
+		//扣减， 会出现数据不一致的问题 - 锁，分布式锁
+		inv.Stocks += goodInfo.Num
+		tx.Save(&inv)
+	}
+	tx.Commit() // 需要自己手动提交操作
+    m.Unlock() //释放锁
+	return &emptypb.Empty{}, nil
+}
+```
+
+#### 3.分布式锁
+
+为了提高服务并发，可能会在多个服务器上配置服务。上述的库存扣减和归还都使用了Mutex锁，这个锁只能管住在自己单体服务中的协程，但是无法做到去给别的单体服务协程加锁。
+
+实际上，分布式锁就是给所有的服务提供一个统一的锁。
+
+##### (1)常见的分布式锁实现方案
+
+1. 基于mysql的悲观锁、乐观锁（不要与mysql中提供的锁机制表锁、行锁、排他锁、共享锁混为一谈）
+
+2. 基于redis的分布式锁
+3. 基于zookeeper的分布式锁
+
+##### (2)基于mysql实现
+
+**悲观锁**：处理数据时持悲观态度，认为会发生并发冲突，获取和修改数据时，别人会修改数据。所以在整个数据处理过程中，需要将数据锁定。悲观锁的实现，需要依靠数据库mysql的排他锁机制来实现。
+
+查询条件后面使用for update，如果有明确的查询条件，那么将会锁住明确的数据，如果查询的条件属性没有索引，会将整个表锁住。
+
+**gorm的实现：**
+
+```go
+tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(&model.Inventory{Goods:goodInfo.GoodsId}).First(&inv);
+```
+
+**乐观锁：**利用数据库本身的行锁，使用了version号来解决，提高了悲观锁的性能。不会让数据库加锁，也不会出现数据不一致。
+
+**gorm的实现：**
+
+```go
+tx.Model(&model.Inventory{}).Select("Stocks", "Version").Where("goods = ? and version= ?", goodInfo.GoodsId, inv.Version).Updates(model.Inventory{Stocks: inv.Stocks, Version: inv.Version+1})
+```
+
+##### (3)基于redis实现分布式锁
+
+使用工具redsync，访问地址：https://github.com/go-redsync/redsync
+
+### 九、支付宝支付
+
+支付宝开放平台注册自己的账号，并创建一个应用，选择网页移动应用，创建时需要添加一个网址url。
+
+开发时，可以使用沙箱环境用于测试，支付宝提供了测试账户（包括卖家和买家账号）。系统默认会生成一个APPID和支付宝网关、RSA密钥。
+
+支付步骤：浏览器下订单，平台返回支付宝url，跳转到支付宝支付，支付成功后，支付宝返回信息
+
+这里使用第三方alipay工具，引入工具：
+
+```go
+import "github.com/smartwalle/alipay"
+```
+
+获取client
+
+```go
+appID:="应用id"
+privateKey := "应用私钥"
+aliPublicKey := "支付宝返回的公钥"// 这个可以使用支付宝开发工具，生成一个
+var client, err = alipay.New(appId, privateKey,false)
+if err != nil {
+  panic(err)
+}
+```
+
+加载公钥，设置订单各种信息
+
+```go
+err = client.LoadAliPayPublicKey(aliPublicKey)
+if err != nil {
+    panic(err)
+}
+// 手机支付，使用TradeWapPay，网页支付使用TradePagePay{}
+var p = alipay.TradeWapPay{}
+// 通知URL，即支付宝完成操作后，会给指定的url发送支付结果通知
+p.NotifyURL = "http : //xxx"
+// 设置支付完成后的跳转页面
+p.ReturnURL = "http : //xx×"
+p.Subject ="标题"
+p.outTradeNo ="传递一个唯一单号"
+// 价格
+p.TotalAmount = "10.00"
+// 手机支付，使用QUICK_WAP_WAY，网页支付使用FAST_INSTANT_TRADE_PAY
+p.ProductCode = "QUICK_WAP_WAY"
+
+// 订单支付url
+url, err := client.TradePagePay(p)
+```
+
+#### 1.支付宝回调通知
+
+```go
+func Notify(ctx *gin.Context) {
+	//支付宝回调通知
+	client, err := alipay.New(global.ServerConfig.AliPayInfo.AppID, global.ServerConfig.AliPayInfo.PrivateKey, false)
+	if err != nil {
+		zap.S().Errorw("实例化支付宝失败")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"msg":err.Error(),
+		})
+		return
+	}
+	err = client.LoadAliPayPublicKey((global.ServerConfig.AliPayInfo.AliPublicKey))
+	if err != nil {
+		zap.S().Errorw("加载支付宝的公钥失败")
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"msg":err.Error(),
+		})
+		return
+	}
+
+	noti, err := client.GetTradeNotification(ctx.Request)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{})
+		return
+	}
+
+	_, err = global.OrderSrvClient.UpdateOrderStatus(context.Background(), &proto.OrderStatus{
+		OrderSn: noti.OutTradeNo,
+		Status:  string(noti.TradeStatus),
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{})
+		return
+	}
+	ctx.String(http.StatusOK, "success")
+}
+```
+
+### 十、elasticsearch
+
+#### 1.为什么需要elasticsearch
+
+mysql搜索面临的问题：a.数据量大时，搜索性能低下   b.没有相关性排名   c.无法全文搜索   d.搜索不准确-没有分词
+
+Elasticsearch是一个分布式可扩展的实时搜索和分析引擎，一个建立在全文搜索引擎Apache Lucene(TM)基础上的搜索引擎。当然Elasticsearch并不仅仅是Lucene那么简单，它不仅包括了全文搜索功能，还可以进行以下工作:
+
+- 分布式实时文件存储，并将每一个字段都编入索引，使其可以被搜索
+- 实时分析的分布式搜索引擎
+- 可以扩展到上百台服务器，处理PB级别的结构化或非结构化数据
+
+#### 2.什么是全文搜索
+
+我们生活中的数据总体分为两种:结构化数据和非结构化数据。
+
+结构化数据：指具有固定格式或有限长度的数据，如数据库，元数据等。
+
+非结构化数据：指不定长或无固定格式的数据，如邮件，word文档等。非结构化数据又一种叫法叫全文数据。
+
+按照数据的分类，搜索也分为两种:
+
+对结构化数据的搜索：如对数据库的搜索，用SQL语句。再如对元数据的搜索，如利用windows搜索对文件名，类型，修改时间进行搜索等。
+
+对非结构化数据的搜索：如利用windows的搜索也可以搜索文件，Linux下的grep命令，再如用Google和百度可以搜索大量内容数据。
+
+#### 3.适用场景
+
+- 维基百科
+- The Guardian、新闻
+- 电商网站、检索商品
+- 日志数据分析、logstash采集日志、ES进行复杂的数据分析(ELK)
+- 商品价格监控网站、用户设定价格阈值
+- BI系统、商业智能、ES执行数据分析和挖掘
+
+#### 4.ES特点
+
+- 可以作为一个大型的分布式集群(数百台服务器)技术，处理PB级数据，服务大公司，可以运行在单机上，服务小公司。
+- ES不是什么新技术，主要是将全文检索、数据分析以及分布式技术合并在一起，才形成了独一无二的ES.lucene (全文检索)、商用的数据分析软件、分布式数据库(mycat)
+- 对用户而言，是开箱即用，非常简单，作为中小型的应用，直接3分钟部署ES，就可以作为生产环境的系统使用，数据量不大，操作不是很复杂。
+- 数据库的功能面对很多领域是不够用的(事务，还有各种联机事务的操作):特殊的功能，比如全文检索、同义词处理、相关度排名、复杂数据分析、海量数据近实时处理;ES作为传统数据库的一个补充，提供了数据库所不能提供的很多功能。
+
+#### 5.ES的docker安装
+
+```bash
+# 新建es的config配置文件
+mkdir -p es_data/elasticsearch/config es_data/elasticsearch/data es_data/elasticsearch/plugins
+# 给目录设置权限
+chmod 777 -R es_data
+# 写入配置到elasticsearch.yml
+echo "http.host: 0.0.0.0" >> es_data/elasticsearch/config/elasticsearch.yml
+# 安装es
+docker run --name elasticsearch -p 9200:9200 -p 9300:9300 \
+-e "discovery.type=single-node" \
+-e ES_JAVA_OPTS="-Xms256m -Xmx512m" \
+-v /home/tony/es_data/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml \
+-v /home/tony/es_data/elasticsearch/data:/usr/share/elasticsearch/data \
+-v /home/tony/es_data/elasticsearch/plugins:/usr/share/elasticsearch/plugins \
+-d elasticsearch:7.10.1
+```
+
+#### 6.Kibana的docker安装
+
+```bash
+docker run -d --name kibana -e ELASTICSEARCH_HOSTS="http://192.168.31.35:9200" -p 5601:5601 kibana:7.10.1
+```
+
+#### 7.ES中的概念
+
+| mysql    | es                                           |
+| -------- | -------------------------------------------- |
+| database | index（7.x版本可以理解为table）              |
+| table    | type（7.x开始type为固定值_doc，指定数据类型) |
+| row      | document                                     |
+| column   | field                                        |
+| schema   | mapping                                      |
+| sql      | DSL                                          |
+
+**索引**：ES将他的数据存储到一个或多个索引中，索引就像数据库，可以向索引写入文档或者从索引中读取文档。
+
+**文档**：文档是ES中的主要实体，所有es最终会归结到文档的搜索上，从客户端上看，文档就像一个json对象，文档由字段构成，每个字段包含字段名以及一个或多个字段值。文档之间可能有各自不同的字段集合，文档没有固定的模式或者强制结构。
+
+```bash
+# 查看索引
+GET _cat/indices
+# 获取具体数据
+GET /account/_source/1
+
+# Put添加数据
+PUT /account/_doc/1
+{
+	"name": "wendy",
+	"age": 18,
+	"company": {
+		"name": "cqust",
+		"address": "cq"
+	}
+}
+
+# 返回
+{
+  "_index" : "account",
+  "_type" : "_doc",
+  "_id" : "1",
+  "_version" : 1,
+  "result" : "created",
+  "_shards" : {
+    "total" : 2,
+    "successful" : 1,
+    "failed" : 0
+  },
+  "_seq_no" : 0,
+  "_primary_term" : 1
+}
+
+# Post添加
+POST user/_doc/1
+{
+	"name" : "bobby",
+	"company" : "imooc"
+}
+
+# 如果想要创建的索引已经有了，让其报错
+POST user/_create/1
+{
+	"name" : "bobby",
+	"company" : "imooc"
+}
+```
+
+#### 8.ES中的查询方式
+
+1. URI带有查询条件(轻量查询)：查询能力有限，不是所有的查询都可以使用此方式
+2. 请求体中带有查询条件(复杂查询)
+   查询条件以JSON格式表现，作为查询请求的请求体，适合复杂的查询
+
+```bash
+# 普通查询
+GET user/_search?q=bobby
+# request查询
+GET account/_search
+{
+	"query": {
+		"match_all": {}
+	}
+}
+```
+
+#### 9.Go语言集成ES
+
+ES查询基于HTTP，因此请求非常方便。引入官方/第三方插件。第三方的使用比较方便，因此这里引入第三方库，地址为：https://github.com/olivere/elastic
+
+```go
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"time"
+
+	"github.com/olivere/elastic"
+)
+
+// Tweet is a structure used for serializing/deserializing data in Elasticsearch.
+type Tweet struct {
+	User     string                `json:"user"`
+	Message  string                `json:"message"`
+	Retweets int                   `json:"retweets"`
+	Image    string                `json:"image,omitempty"`
+	Created  time.Time             `json:"created,omitempty"`
+	Tags     []string              `json:"tags,omitempty"`
+	Location string                `json:"location,omitempty"`
+	Suggest  *elastic.SuggestField `json:"suggest_field,omitempty"`
+}
+
+const mapping = `
+{
+	"settings":{
+		"number_of_shards": 1,
+		"number_of_replicas": 0
+	},
+	"mappings":{
+		"tweet":{
+			"properties":{
+				"user":{
+					"type":"keyword"
+				},
+				"message":{
+					"type":"text",
+					"store": true,
+					"fielddata": true
+				},
+				"image":{
+					"type":"keyword"
+				},
+				"created":{
+					"type":"date"
+				},
+				"tags":{
+					"type":"keyword"
+				},
+				"location":{
+					"type":"geo_point"
+				},
+				"suggest_field":{
+					"type":"completion"
+				}
+			}
+		}
+	}
+}`
+
+func main() {
+	// Starting with elastic.v5, you must pass a context to execute each service
+	ctx := context.Background()
+
+	// Obtain a client and connect to the default Elasticsearch installation
+	// on 127.0.0.1:9200. Of course you can configure your client to connect
+	// to other hosts and configure it in various other ways.
+    // 创建一个链接
+    host:="http://192.168.31.35:9200"
+    client, err := elastic.NewClient(elastic.SetURL(host),elastic.SetSniff(false))
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+
+	// Ping the Elasticsearch server to get e.g. the version number
+	info, code, err := client.Ping("http://127.0.0.1:9200").Do(ctx)
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	fmt.Printf("Elasticsearch returned with code %d and version %s\n", code, info.Version.Number)
+
+	// Getting the ES version number is quite common, so there's a shortcut
+	esversion, err := client.ElasticsearchVersion("http://127.0.0.1:9200")
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	fmt.Printf("Elasticsearch version %s\n", esversion)
+
+	// Use the IndexExists service to check if a specified index exists.
+	exists, err := client.IndexExists("twitter").Do(ctx)
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	if !exists {
+		// Create a new index.
+		createIndex, err := client.CreateIndex("twitter").BodyString(mapping).Do(ctx)
+		if err != nil {
+			// Handle error
+			panic(err)
+		}
+		if !createIndex.Acknowledged {
+			// Not acknowledged
+		}
+	}
+
+	// Index a tweet (using JSON serialization)
+	tweet1 := Tweet{User: "olivere", Message: "Take Five", Retweets: 0}
+	put1, err := client.Index().
+		Index("twitter").
+		Type("tweet").
+		Id("1").
+		BodyJson(tweet1).
+		Do(ctx)
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	fmt.Printf("Indexed tweet %s to index %s, type %s\n", put1.Id, put1.Index, put1.Type)
+
+	// Index a second tweet (by string)
+	tweet2 := `{"user" : "olivere", "message" : "It's a Raggy Waltz"}`
+	put2, err := client.Index().
+		Index("twitter").
+		Type("tweet").
+		Id("2").
+		BodyString(tweet2).
+		Do(ctx)
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	fmt.Printf("Indexed tweet %s to index %s, type %s\n", put2.Id, put2.Index, put2.Type)
+
+	// Get tweet with specified ID
+	get1, err := client.Get().
+		Index("twitter").
+		Type("tweet").
+		Id("1").
+		Do(ctx)
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	if get1.Found {
+		fmt.Printf("Got document %s in version %d from index %s, type %s\n", get1.Id, get1.Version, get1.Index, get1.Type)
+	}
+
+	// Flush to make sure the documents got written.
+	_, err = client.Flush().Index("twitter").Do(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	// Search with a term query
+	termQuery := elastic.NewTermQuery("user", "olivere")
+	searchResult, err := client.Search().
+		Index("twitter").   // search in index "twitter"
+		Query(termQuery).   // specify the query
+		Sort("user", true). // sort by "user" field, ascending
+		From(0).Size(10).   // take documents 0-9
+		Pretty(true).       // pretty print request and response JSON
+		Do(ctx)             // execute
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+
+	// searchResult is of type SearchResult and returns hits, suggestions,
+	// and all kinds of other information from Elasticsearch.
+	fmt.Printf("Query took %d milliseconds\n", searchResult.TookInMillis)
+
+	// Each is a convenience function that iterates over hits in a search result.
+	// It makes sure you don't need to check for nil values in the response.
+	// However, it ignores errors in serialization. If you want full control
+	// over iterating the hits, see below.
+	var ttyp Tweet
+	for _, item := range searchResult.Each(reflect.TypeOf(ttyp)) {
+		if t, ok := item.(Tweet); ok {
+			fmt.Printf("Tweet by %s: %s\n", t.User, t.Message)
+		}
+	}
+	// TotalHits is another convenience function that works even when something goes wrong.
+	fmt.Printf("Found a total of %d tweets\n", searchResult.TotalHits())
+
+	// Here's how you iterate through results with full control over each step.
+	if searchResult.Hits.TotalHits > 0 {
+		fmt.Printf("Found a total of %d tweets\n", searchResult.Hits.TotalHits)
+
+		// Iterate through results
+		for _, hit := range searchResult.Hits.Hits {
+			// hit.Index contains the name of the index
+
+			// Deserialize hit.Source into a Tweet (could also be just a map[string]interface{}).
+			var t Tweet
+			err := json.Unmarshal(*hit.Source, &t)
+			if err != nil {
+				// Deserialization failed
+			}
+
+			// Work with tweet
+			fmt.Printf("Tweet by %s: %s\n", t.User, t.Message)
+		}
+	} else {
+		// No hits
+		fmt.Print("Found no tweets\n")
+	}
+
+	// Update a tweet by the update API of Elasticsearch.
+	// We just increment the number of retweets.
+	update, err := client.Update().Index("twitter").Type("tweet").Id("1").
+		Script(elastic.NewScriptInline("ctx._source.retweets += params.num").Lang("painless").Param("num", 1)).
+		Upsert(map[string]interface{}{"retweets": 0}).
+		Do(ctx)
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	fmt.Printf("New version of tweet %q is now %d\n", update.Id, update.Version)
+
+	// ...
+
+	// Delete an index.
+	deleteIndex, err := client.DeleteIndex("twitter").Do(ctx)
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	if !deleteIndex.Acknowledged {
+		// Not acknowledged
+	}
+}
+```
+
+#### 10.Match查询
+
+```go
+// 方法一：
+// 第一个是查询字段，第二个是查询字段的值
+q := elastic.NewMatchQuery("address","street")
+// 执行
+src, err := q.Source()
+if err != nil {
+	panic(err)
+}
+data, err := json.Marshal(src)
+got := string(data)
+fmt.Println(got)
+
+// 方法二：
+q := elastic.NewMatchQuery("address","street")
+result, err := client.Search().Index("user").Query(q).Do(context.Background())
+if err != nil {
+    panic(err)
+}
+// 搜索结果数量
+total := result.Hits.TatolHits.Value
+for index, value := range result.Hits.Hits {
+    if jsonData, err := value.Source.MarshalJSON(); err != nil {
+        fmt.Println(string(json))
+    }else{
+        panic(err)
+    }
+}
+```
+
+#### 11.保存数据到es中
+
+```go
+tweet1 := Tweet{User: "olivere", Message: "Take Five", Retweets: 0}
+	put1, err := client.Index().
+		Index("twitter").
+		Type("tweet").
+		Id("1").
+		BodyJson(tweet1).
+		Do(ctx)
+	if err != nil {
+		// Handle error
+		panic(err)
+	}
+	fmt.Printf("Indexed tweet %s to index %s, type %s\n", put1.Id, put1.Index, put1.Type)
+```
+
+#### 12.添加索引
+
+```go
+// 定义表结构
+// Tweet is a structure used for serializing/deserializing data in Elasticsearch.
+type Tweet struct {
+	User     string                `json:"user"`
+	Message  string                `json:"message"`
+	Retweets int                   `json:"retweets"`
+	Image    string                `json:"image,omitempty"`
+	Created  time.Time             `json:"created,omitempty"`
+	Tags     []string              `json:"tags,omitempty"`
+	Location string                `json:"location,omitempty"`
+	Suggest  *elastic.SuggestField `json:"suggest_field,omitempty"`
+}
+
+const mapping = `
+{
+	"settings":{
+		// 分片数量
+		"number_of_shards": 1,
+		// 副本数量
+		"number_of_replicas": 0
+	},
+	"mappings":{
+		"tweet":{
+			"properties":{
+				"user":{
+					"type":"text"，
+					"analyzer": "ik_max_word"
+				},
+				"message":{
+					"type":"text",
+					"store": true,
+					"fielddata": true
+				},
+				"image":{
+					"type":"keyword"
+				},
+				"created":{
+					"type":"date"
+				},
+				"tags":{
+					"type":"keyword"
+				},
+				"location":{
+					"type":"geo_point"
+				},
+				"suggest_field":{
+					"type":"completion"
+				}
+			}
+		}
+	}
+}`
+
+if !exists {
+    // Create a new index.
+    createIndex, err := client.CreateIndex("twitter").BodyString(mapping).Do(ctx)
+    if err != nil {
+        // Handle error
+        panic(err)
+    }
+    if !createIndex.Acknowledged {
+        // Not acknowledged
+    }
+}
+```
+
+#### 13.将mysql商品数据同步到ES中
+
+```go
+var goods []model.Goods
+db.Find(&goods)
+for _, g = range goods {
+    esModel := model.EsGoods{
+        ID: g.ID,
+        CategoryID: g.CategoryID,
+        BrandsID: g.BrandsID,
+        OnSale: g.Onsale,
+        ShipFree: g.ShipFree,
+        IsNew: g.IsNew,
+        IsHot: g.IsHot,
+        Name: g.Name,
+        ClickNum: g.ClickNum,
+        SoldNum: g.SoldNum,
+        FavNum: g.FavNum,
+        MarketPrice: g.MarketPrice,
+        GoodsBrief: g.GoodsBrief,
+        ShopPrice: g.ShopPrice,
+    }
+    _,err := global.EsClient.Index().Index(esModel.GetIndexName()).BodyJson(esModel).Id(strconv.Itoa(int(g,ID)).Do(context.Background())
+     if err != nil {panic(err)}
+     
+}
+```
+
