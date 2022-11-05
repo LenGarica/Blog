@@ -2215,3 +2215,255 @@ for _, g = range goods {
 }
 ```
 
+### 十一、RocketMQ
+
+#### 1.生产者消息发送
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/apache/rocketmq-client-go/v2"
+	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"github.com/apache/rocketmq-client-go/v2/producer"
+)
+
+func main() {
+	producer, err := rocketmq.NewProducer(producer.WithNameServer([]string{"192.168.31.35:9876"}))
+	if err != nil {
+		panic("生成producer失败")
+	}
+	// 启动producer
+	if err = producer.Start(); err != nil {
+		panic("启动producer失败")
+	}
+	// 同步发送
+	res, err := producer.SendSync(context.Background(), primitive.NewMessage("imooc", []byte("this is imooc")))
+	if err != nil {
+		fmt.Printf("发送失败： %s\n", err)
+	} else {
+		fmt.Printf("发送成功：%s\n", res.String())
+	}
+
+	// 关闭producer
+	if err := producer.Shutdown(); err != nil {
+		panic("关闭producer失败")
+	}
+
+}
+```
+
+#### 2.消息者消费消费
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/apache/rocketmq-client-go/v2"
+	"github.com/apache/rocketmq-client-go/v2/consumer"
+	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"time"
+)
+
+func main() {
+    // 注意这里不能定义成consumer
+	client, err := rocketmq.NewPushConsumer(
+		consumer.WithNameServer([]string{"192.168.31.35:9876"}),
+		consumer.WithGroupName("mxshop"),
+	)
+
+	if err != nil {
+		panic(err)
+	}
+
+	if err := client.Subscribe("imooc", consumer.MessageSelector{}, func(ctx context.Context, msgs ...*primitive.MessageExt) (consumer.ConsumeResult, error) {
+		for i := range msgs {
+			fmt.Printf("获取到的值：%v\n", msgs[i])
+
+		}
+		return consumer.ConsumeSuccess, nil
+	}); err != nil {
+		fmt.Println("读取消息失败")
+	}
+
+	_ = client.Start()
+	// 不能让主协程退出
+	time.Sleep(time.Hour)
+	_ = client.Shutdown()
+}
+```
+
+#### 3.发送延迟消息
+
+延迟的机制是在服务端实现的，也就是Broker收到了消息，但是经过一段时间以后才发送服务器按照1-N定义了如下级别:“1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"github.com/apache/rocketmq-client-go/v2"
+	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"github.com/apache/rocketmq-client-go/v2/producer"
+)
+
+func main() {
+	producer, err := rocketmq.NewProducer(producer.WithNameServer([]string{"192.168.31.35:9876"}))
+	if err != nil {
+		panic("生成producer失败")
+	}
+	// 启动producer
+	if err = producer.Start(); err != nil {
+		panic("启动producer失败")
+	}
+	msg := primitive.NewMessage("imooc", []byte("this is delay message"))
+	// 设置延迟级别
+	msg.WithDelayTimeLevel(2)
+	// 同步发送
+	res, err := producer.SendSync(context.Background(), msg)
+	if err != nil {
+		fmt.Printf("发送失败： %s\n", err)
+	} else {
+		fmt.Printf("发送成功：%s\n", res.String())
+	}
+
+	// 关闭producer
+	if err := producer.Shutdown(); err != nil {
+		panic("关闭producer失败")
+	}
+
+}
+```
+
+#### 4.发送事务消息
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/apache/rocketmq-client-go/v2"
+	"github.com/apache/rocketmq-client-go/v2/primitive"
+	"github.com/apache/rocketmq-client-go/v2/producer"
+)
+
+type DemoListener struct {
+	localTrans       *sync.Map
+	transactionIndex int32
+}
+
+func NewDemoListener() *DemoListener {
+	return &DemoListener{
+		localTrans: new(sync.Map),
+	}
+}
+
+// ExecuteLocalTransaction 执行本地方法，返回执行状态
+func (dl *DemoListener) ExecuteLocalTransaction(msg *primitive.Message) primitive.LocalTransactionState {
+	nextIndex := atomic.AddInt32(&dl.transactionIndex, 1)
+	fmt.Printf("nextIndex: %v for transactionID: %v\n", nextIndex, msg.TransactionId)
+	status := nextIndex % 3
+	dl.localTrans.Store(msg.TransactionId, primitive.LocalTransactionState(status+1))
+
+	fmt.Printf("dl")
+	return primitive.UnknowState
+}
+
+func (dl *DemoListener) CheckLocalTransaction(msg *primitive.MessageExt) primitive.LocalTransactionState {
+	fmt.Printf("%v msg transactionID : %v\n", time.Now(), msg.TransactionId)
+	v, existed := dl.localTrans.Load(msg.TransactionId)
+	if !existed {
+		fmt.Printf("unknow msg: %v, return Commit", msg)
+		return primitive.CommitMessageState
+	}
+	state := v.(primitive.LocalTransactionState)
+	switch state {
+	case 1:
+		fmt.Printf("checkLocalTransaction COMMIT_MESSAGE: %v\n", msg)
+		return primitive.CommitMessageState
+	case 2:
+		fmt.Printf("checkLocalTransaction ROLLBACK_MESSAGE: %v\n", msg)
+		return primitive.RollbackMessageState
+	case 3:
+		fmt.Printf("checkLocalTransaction unknow: %v\n", msg)
+		return primitive.UnknowState
+	default:
+		fmt.Printf("checkLocalTransaction default COMMIT_MESSAGE: %v\n", msg)
+		return primitive.CommitMessageState
+	}
+}
+
+func main() {
+	p, _ := rocketmq.NewTransactionProducer(
+		NewDemoListener(),
+		producer.WithNsResolver(primitive.NewPassthroughResolver([]string{"127.0.0.1:9876"})),
+		producer.WithRetry(1),
+	)
+	err := p.Start()
+	if err != nil {
+		fmt.Printf("start producer error: %s\n", err.Error())
+		os.Exit(1)
+	}
+
+	for i := 0; i < 10; i++ {
+		res, err := p.SendMessageInTransaction(context.Background(),
+			primitive.NewMessage("TopicTest5", []byte("Hello RocketMQ again "+strconv.Itoa(i))))
+
+		if err != nil {
+			fmt.Printf("send message error: %s\n", err)
+		} else {
+			fmt.Printf("send message success: result=%s\n", res.String())
+		}
+	}
+	time.Sleep(5 * time.Minute)
+	err = p.Shutdown()
+	if err != nil {
+		fmt.Printf("shutdown producer error: %s", err.Error())
+	}
+}
+```
+
+### 十二、链路追踪
+
+#### 1.场景讲解
+
+微服务开发过程中，服务之间会有服务依赖，此时某个接口出现异常时，需要排查服务链上是哪个具体的服务出错了。又或者，某个接口响应速度比较慢，需要确定是依赖链上服务响应时间。
+
+#### 2.选型
+
+|                     | zipkin                  | jaeger                   | skywalking                       |
+| ------------------- | ----------------------- | ------------------------ | -------------------------------- |
+| OpenTracing兼容     | 是                      | 是                       | 是                               |
+| 客户端支持语言      | java,c#,go,php,python等 | java,c#,go,php,python等  | Java,.NET Core,NodeJS,PHP,python |
+| 存储                | ES,mysql,Cassandra,内存 | ES，kafka,Cassandra,内存 | ES，H2,mysql,TIDB,shardsphere    |
+| 传输协议支持        | http,MQ                 | udp/http                 | gRPC                             |
+| ui丰富程度          | 低                      | 中                       | 中                               |
+| 实现方式-代码侵入性 | 拦截请求，侵入          | 拦截请求，侵入           | 字节码注入，无侵入               |
+| 扩展性              | 高                      | 高                       | 中                               |
+| trace查询           | 支持                    | 支持                     | 支持                             |
+| 性能损失            | 中                      | 中                       | 低                               |
+
+#### 3.安装与使用
+
+```bash
+docker run \
+  --rm \
+  --name jaeger \
+  -p6831:6831/udp \
+  -p16686:16686 \
+  jaegertracing/all-in-one:latest
+```
+
+访问地址：http://localhost:16686

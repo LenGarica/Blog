@@ -230,6 +230,8 @@ log.info("删除草稿文章 key=" + key + " 成功！");
 
 ## 二、RabbitMQ实现延迟消息
 
+在实习中，遇到一个需求，一个加热炉有多种类型的作业，例如，正常的空冷作业，淬火作业（即不仅加热还要放到要淬火的液体中）以及还有一种需要使用电载偶的作业。针对每种不同类型的作业，需要不同的作业出炉提醒，例如，空冷作业出炉前30分钟，提醒操作人员，某某号炉子要出炉了，将放在某空冷区域。对于淬火作业，需要提醒操作人员，提前一个小时需要将淬火井区域的盖子打开，同时还要提醒到期时间。因此，这里使用到延迟消息队列。
+
 ### 1. 延时队列的使用场景
 
 那么什么时候需要用延时队列呢？考虑一下以下场景：
@@ -253,9 +255,8 @@ log.info("删除草稿文章 key=" + key + " 成功！");
 7. Quartz
 8. Redis Zset
 
-### 3. 死信队列实现消息延迟
-死信，顾名思义就是无法被消费的消息。producer 将消息投递到 broker 或者直接到queue 里了，consumer 从 queue 取出消息
-进行消费，但某些时候由于特定的原因导致 queue 中的某些消息无法被消费，这样的消息如果没有后续的处理，就变成了死信，有死信自然就有了死信队列。
+### 3. 死信队列
+死信，顾名思义就是无法被消费的消息。producer 将消息投递到 broker 或者直接到queue 里了，consumer 从 queue 取出消息进行消费，但某些时候由于特定的原因导致 queue 中的某些消息无法被消费，这样的消息如果没有后续的处理，就变成了死信，有死信自然就有了死信队列。
 
 应用场景:为了保证订单业务的消息数据不丢失，比如说: 用户在商城下单成功并点击去支付后在指定时间未支付时自动失效，但是用户能够看到这条订单的支付失败记录。
 
@@ -267,13 +268,505 @@ log.info("删除草稿文章 key=" + key + " 成功！");
 
 #### （2）具体实现
 
-再使用消息队列的时候，应该先画一个消息传递图，这样能够是我们的思路很清晰。
+使用消息队列的时候，应该先画一个消息传递图，这样能够是我们的思路很清晰。
 
 ![](D:\blog\picture\dead_queue.png)
 
+生产者代码实现：
 
+```java
+package com.rabbitmq.eghit;
+
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.utils.RabbitMqUtils;
+
+import java.nio.charset.StandardCharsets;
+
+/**
+ * 死信队列生产者
+ * 只声明交换机名称、定义消息特性以及下游路由
+ */
+public class Producer01 {
+    // 普通交换机
+    public static final String NORMAL_EXCHANGE = "normal_exchange";
+
+    public static void main(String[] args) throws Exception {
+        Channel channel = RabbitMqUtils.getChannel();
+        // 设置死信消息的特性， 设置TTL时间， 设置过期时间，展示死信队列
+        AMQP.BasicProperties properties = new AMQP.BasicProperties().builder().expiration("10000").build();
+        // 向队列中发送消息
+        for (int i = 1; i < 11; i++) {
+            String msg = "info" + i;
+            //void basicPublish(String exchange, String routingKey, BasicProperties props, byte[] body) 
+            channel.basicPublish(NORMAL_EXCHANGE, "zhangsan", properties, msg.getBytes(StandardCharsets.UTF_8));
+
+        }
+    }
+}
+```
+
+消费者1实现
+
+```java
+package com.rabbitmq.eghit;
+
+import com.rabbitmq.client.BuiltinExchangeType;
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.DeliverCallback;
+import com.rabbitmq.utils.RabbitMqUtils;
+
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 死信队列
+ */
+public class Consumer01 {
+
+    // 定义普通交换机名
+    public static final String NORMAL_EXCHANGE = "normal_exchange";
+    // 定义普通队列名
+    public static final String NORMAL_QUEUE = "normal_queue";
+    // 定义死信交换机名
+    public static final String DEAD_EXCHANGE = "dead_exchange";
+	// 定义死信队列名
+    public static final String DEAD_QUEUE = "dead_exchange";
+
+    public static void main(String[] args) throws Exception {
+        Channel channel = RabbitMqUtils.getChannel();
+        // 声明普通交换机和死信交换机类型为direct
+        channel.exchangeDeclare(NORMAL_EXCHANGE, BuiltinExchangeType.DIRECT);
+        channel.exchangeDeclare(DEAD_EXCHANGE, BuiltinExchangeType.DIRECT);
+
+        // 声明队列的参数
+        Map<String, Object> arguments = new HashMap<>();
+        // 设置过期时间，可以在生产者处进行设置
+		// arguments.put("x-message-ttl", 100000);
+        //正常队列设置死信交换机， 参数 key 是固定值
+        arguments.put("x-dead-letter-exchange", DEAD_EXCHANGE);
+        // 设置死信交换机的RoutingKey， 参数 key 是固定值
+        arguments.put("x-dead-letter-routing-key", "lisi");
+        // 设置正常队列的长度限制
+		// arguments.put("x-max-length", 6);
+        
+        // 声明普通队列
+        channel.queueDeclare(NORMAL_QUEUE, false, false,false,arguments);
+        // 声明死信队列
+        channel.queueDeclare(DEAD_QUEUE,false,false,false,null);
+
+        // 绑定交换机和队列
+        channel.queueBind(NORMAL_QUEUE,NORMAL_EXCHANGE,"zhangsan");
+        channel.queueBind(DEAD_QUEUE,DEAD_EXCHANGE,"lisi");
+        System.out.println("等待接收消息......");
+
+        // 回调函数
+        DeliverCallback deliverCallback = (consumerTag, msg) -> {
+            System.out.println("Consumer01 接收的消息是：" + new String(msg.getBody(), StandardCharsets.UTF_8));
+        };
+
+        // 消费的时候，需要回调函数
+        channel.basicConsume(NORMAL_QUEUE, true, deliverCallback, consumerTag -> {});
+    }
+}
+```
+
+消费者2实现
+
+```java
+
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.DeliverCallback;
+import com.rabbitmq.utils.RabbitMqUtils;
+
+import java.nio.charset.StandardCharsets;
+
+/**
+ * 死信队列
+ */
+public class Consumer02 {
+
+    public static final String DEAD_QUEUE = "dead_exchange";
+
+    public static void main(String[] args) throws Exception {
+        Channel channel = RabbitMqUtils.getChannel();
+        System.out.println("等待接收消息.......");
+        
+        
+        DeliverCallback deliverCallback = (consumerTag, msg) -> {
+            System.out.println("Consumer02 接收的消息是：" + new String(msg.getBody(), StandardCharsets.UTF_8));
+        };
+
+        channel.basicConsume(DEAD_QUEUE, true, deliverCallback, consumerTag -> {});
+
+    }
+}
+```
+
+### 4.死信队列实现延迟消息
+
+本文使用Ruoyi-Vue集成RabbitMQ，实现死信队列延迟消息。
+
+#### （1）添加依赖和配置
+
+```xml
+<!-- rabbitmq-->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-amqp</artifactId>
+</dependency>
+
+rabbitmq:
+    host: 127.0.0.1
+    port: 15672
+    username: guest
+    password: guest	
+```
+
+#### （2）延迟消息结构图
+
+<img src="../../picture/dead_delay.png">
+
+#### （3）代码实现
+
+结构图配置代码实现：
+
+```java
+package com.ruoyi.framework.config;
+
+import org.springframework.amqp.core.*;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 配置文件类代码
+ */
+
+@Configuration
+public class TtlQueueConfig {
+    // 普通交换机
+    public static final String X_EXCHANGE = "X";
+    // 死信交换机
+    public static final String Y_DEAD_LETTER_EXCHANGE = "Y";
+
+    // 普通队列名称
+    public static final String QUEUE_A = "CQA";
+    public static final String QUEUE_B = "CQB";
+    public static final String QUEUE_C = "CQC";
+
+    // 死信队列名称
+    public static final String DEAD_LETTER_QUEUE = "DQ";
+
+    // 声明普通交换机
+    @Bean("xExchange")
+    public DirectExchange xExchange(){
+        return new DirectExchange(X_EXCHANGE);
+    }
+
+    // 声明死信交换机
+    @Bean("yExchange")
+    public DirectExchange yExchange(){
+        return new DirectExchange(Y_DEAD_LETTER_EXCHANGE);
+    }
+
+
+    // 声明普通队列A，声明时，需要将下游交换机和路由进行声明
+    @Bean("queueA")
+    public Queue queueA(){
+        Map<String, Object> arguments = new HashMap<>();
+        // 设置死信交换机
+        arguments.put("x-dead-letter-exchange",Y_DEAD_LETTER_EXCHANGE);
+        // 设置死信routingKey
+        arguments.put("x-dead-letter-routing-key","YD");
+        // 设置TTL，unit 是ms
+        // arguments.put("x-message-ttl", 10000); 这里设置的是消息过期时间，如果需要手动输入，则把这句话去掉
+        return QueueBuilder.durable(QUEUE_A).withArguments(arguments).build();
+    }
+
+    // 绑定普通队列A 和 普通交换机
+    @Bean
+    public Binding queueABindingX(@Qualifier("queueA") Queue queueA,
+                                  @Qualifier("xExchange") DirectExchange xExchange) {
+        return BindingBuilder.bind(queueA).to(xExchange).with("XA");
+    }
+
+    // 声明普通队列 B ，声明时，需要将下游交换机和路由进行声明
+    @Bean("queueB")
+    public Queue queueB(){
+        Map<String, Object> arguments = new HashMap<>();
+        // 设置死信交换机
+        arguments.put("x-dead-letter-exchange",Y_DEAD_LETTER_EXCHANGE);
+        // 设置死信routingKey
+        arguments.put("x-dead-letter-routing-key","YD");
+        // 设置TTL，unit 是ms
+        // arguments.put("x-message-ttl", 40000);
+        return QueueBuilder.durable(QUEUE_B).withArguments(arguments).build();
+    }
+
+    // 绑定 B 和 普通交换机
+    @Bean
+    public Binding queueBBindingX(@Qualifier("queueB") Queue queueB,
+                                  @Qualifier("xExchange") DirectExchange xExchange) {
+        return BindingBuilder.bind(queueB).to(xExchange).with("XB");
+    }
+
+    //声明队列 C 死信交换机， 声明时，需要将下游交换机和路由进行声明
+    @Bean("queueC")
+    public Queue queueC(){
+        Map<String, Object> args = new HashMap<>(3);
+        //声明当前队列绑定的死信交换机
+        args.put("x-dead-letter-exchange", Y_DEAD_LETTER_EXCHANGE);
+        //声明当前队列的死信路由 key
+        args.put("x-dead-letter-routing-key", "YD");
+        //没有声明 TTL 属性
+        return QueueBuilder.durable(QUEUE_C).withArguments(args).build();
+    }
+
+
+    //声明队列 C 和 交换机
+    @Bean
+    public Binding queueCBindingX(@Qualifier("queueC") Queue queueC,
+                                  @Qualifier("xExchange") DirectExchange xExchange){
+        return BindingBuilder.bind(queueC).to(xExchange).with("XC");
+    }
+
+    // 声明死信队列
+    @Bean("queueD")
+    public Queue queueD(){
+        return QueueBuilder.durable(DEAD_LETTER_QUEUE).build();
+    }
+
+    // 绑定 D 和 交换机
+    @Bean
+    public Binding queueDBindingY(@Qualifier("queueD") Queue queueD,
+                                  @Qualifier("yExchange") DirectExchange yExchange) {
+        return BindingBuilder.bind(queueD).to(yExchange).with("YD");
+    }
+}
+```
+
+结构图生产者代码：
+
+```java
+/**
+ * Rabbitmq的消息生产者
+ */
+@Api("发送消息")
+@Slf4j
+@RestController
+@RequestMapping("/ttl")
+public class SendMsgController {
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+ 	/**
+     * 自定义过期时间，但是，这种方式无法保证消息按照过期时间的长短进行消费，只能监听第一个消息优先被消费
+     *
+     * @param message
+     * @param ttlTime
+     */
+    @ApiOperation("发送自定义过期时间消息")
+    @GetMapping("/sendExpirationMsg/{message}/{ttlTime}")
+    public void sendMsg(@PathVariable String message, @PathVariable String ttlTime) {
+        rabbitTemplate.convertAndSend("X", "XC", message,
+                msg -> {
+                    msg.getMessageProperties().setExpiration(ttlTime);
+                    return msg;
+                });
+        log.info("当前时间：{},发送一条时长{}毫秒 TTL 信息给队列 C:{}", new Date(), ttlTime, message);
+    }
+}
+```
+
+结构图消费者代码：
+
+```java
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
+
+import java.util.Date;
+
+// 监听队列
+@Component
+@Slf4j
+public class DeadLetterQueueConsumer {
+
+    // 接收消息
+    @RabbitListener(queues = "DQ")
+    public void receiveD(Message message){
+        String msg = new String(message.getBody());
+        log.info("当前时间：{}, 接收到死信队列的消息：{}",new Date(), msg);
+    }
+}
+```
+
+### 5.死信队列延迟消息的问题
+
+消息可能并不会按时“死亡“，因为 RabbitMQ 只会检查第一个消息是否过期，如果过期则丢到死信队列，如果第一个消息的延时时长很长，而第二个消息的延时时长很短，第二个消息并不会优先得到执行。
+
+这里有两种解决方案，第一种是，为每个普通队列分别设置不同的私信队列，但是这样将会很麻烦。第二种，就是使用RabbitMQ的插件实现延迟队列。
+
+### 6.使用延迟队列插件
+
+在githu上下载https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases，
+
+下载rabbitmq_delayed_message_exchange 插件，放置到 RabbitMQ 的插件目录。然后进入sbin目录下，执行命令
+
+```bash
+rabbitmq-plugins enable rabbitmq_delayed_message_exchange
+```
+
+修改第4章中的Y交换机和私信队列，为延迟交换机和延迟队列。引入延迟队列插件后，能够将整体架构图修改到非常简单。
+
+![引入延迟队列后的架构图](../../picture/delay_qu.png)
+
+由于使用的是延迟队列插件，这个插件延迟类型rabbitmq一开始不支持的，是后续版本的扩展。因此，我们在设置配置的时候，需要用到自定义交换机配置，即CustomExchange。
+
+配置代码：
+
+```java
+import org.springframework.amqp.core.*;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 基于延迟队列的插件实现消息延迟发送
+ * 延迟的地方在交换机上
+ * 这种方式，只需要生产者-》交换机-》队列-》消费者
+ */
+@Configuration
+public class DelayQueueConfig {
+
+    // 延迟交换机
+    public static final String DELAY_EXCHANGE_NAME = "delayed.exchange";
+    // 延迟队列
+    public static final String DELAY_QUEUE_NAME = "delayed.queue";
+    // routingKey
+    public static final String DELAY_ROUTING_KEY = "delayed.routing.key";
+
+    // 延迟队列声明
+    @Bean
+    public Queue delayedQueue() {
+        return new Queue(DELAY_QUEUE_NAME);
+    }
+
+    // 因为基于插件的，因此这里只能是自定义交换机
+    @Bean
+    public CustomExchange delayedExchange(){
+        Map<String, Object> arguments = new HashMap<>();
+        arguments.put("x-delayed-type", "direct");
+        /**
+         * 1. 交换机的名称
+         * 2. 类型
+         * 3. 是否需要持久化
+         * 4. 是否需要自动删除
+         * 5. 其他的参数
+         */
+        return new CustomExchange(DELAY_EXCHANGE_NAME, "x-delayed-message", true, false, arguments);
+    }
+
+    // 将交换机和队列进行绑定
+    @Bean
+    public Binding delayedQueueBindingDelayedExchange(@Qualifier("delayedQueue") Queue delayedQueue,
+                                                      @Qualifier("delayedExchange") CustomExchange delayedExchange){
+        return BindingBuilder.bind(delayedQueue).to(delayedExchange).with(DELAY_ROUTING_KEY).noargs();
+    }
+
+}
+```
+
+生产者代码：
+
+```java
+
+import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Date;
+
+/**
+ * Rabbitmq的消息生产者
+ */
+@Api("发送消息")
+@Slf4j
+@RestController
+@RequestMapping("/ttl")
+public class SendMsgController {
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+
+    // 延迟交换机
+    public static final String DELAY_EXCHANGE_NAME = "delayed.exchange";
+    // routingKey
+    public static final String DELAY_ROUTING_KEY = "delayed.routing.key";
+    
+      /**
+     * 使用延迟队列插件实现延迟消息
+     *
+     * @param message
+     * @param delayTime
+     */
+    @ApiOperation("使用延迟队列插件实现延迟消息")
+    @GetMapping("sendDelayMsg/{message}/{delayTime}")
+    public void sendMsg(@PathVariable String message, @PathVariable Integer delayTime) {
+        rabbitTemplate.convertAndSend(DELAY_EXCHANGE_NAME, DELAY_ROUTING_KEY, message,
+                msg -> {
+                    msg.getMessageProperties().setDelay(delayTime);
+                    return msg;
+                });
+        log.info(" 当 前 时 间 ： {}, 发 送 一 条 延 迟 {} 毫秒的信息给队列 delayed.queue:{}", new
+                Date(), delayTime, message);
+    }
+}
+```
+
+消费者代码：
+
+```java
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.stereotype.Component;
+
+import java.util.Date;
+
+@Component
+@Slf4j
+public class DeadLetterQueueConsumer {
+
+    // 延迟队列
+    public static final String DELAY_QUEUE_NAME = "delayed.queue";
+
+    @RabbitListener(queues = DELAY_QUEUE_NAME)
+    public void receiveDelayedQueue(Message message){
+        String msg = new String(message.getBody());
+        log.info("当前时间：{},收到延时队列的消息：{}", new Date(), msg);
+    }
+}
+```
 
 ## 三、整合Camunda实现工作流
+
+使用Camunda需要安装几个软件，首先要确保JRE是1.8版本以上的，其次在Camunda官网上下载Camunda-bpm-run-7.17.0以及Camunda-modeler-4.9.0。
 
 ### 1. 流程部署
 
