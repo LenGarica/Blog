@@ -6782,3 +6782,12 @@ public class OrderServiceImpl implements OrderService {
 乘客支付订单后，可以主动发送Ajax请求，查询订单支付情况。
 
 司机端程序上面设置轮询定时器，不停的查询代驾订单是否付款成功。
+
+
+
+
+
+
+
+
+

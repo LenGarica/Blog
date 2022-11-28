@@ -14,17 +14,17 @@ Flink 是一个分布式的流处理框架，它能够对有界和无界的数�
 
 Flink 有界数据流和无界数据流：
 
-<div align="center"> <img width="600px" src="pictures/flink-bounded-unbounded.png"/> </div>
+<img src="../../picture/flink-bounded-unbounded.png"/>
 
 Spark Streaming 数据流的拆分：
 
-<div align="center"> <img width="600px" src="pictures/streaming-flow.png"/> </div>
+<img src="../../picture/streaming-flow.png"/>
 
 ### 1.2 Flink架构
 
 Flink 采用分层的架构设计，从而保证各层在功能和职责上的清晰。如下图所示，由上而下分别是 API & Libraries 层、Runtime 核心层以及物理部署层：
 
-<div align="center"> <img width="600px"  src="pictures/flink-stack.png"/> </div>
+<img src="../../picture/flink-stack.png"/>
 
 #### 1. API & Libraries 层
 
@@ -45,7 +45,7 @@ Flink 的物理部署层，用于支持在不同平台上部署运行 Flink 应�
 
 在前一节介绍的 API & Libraries 这一层，Flink 又进行了更为具体的划分。具体如下：
 
-<div align="center"> <img src="pictures/flink-api-stack.png"/> </div>
+<img src="../../picture/flink-api-stack.png"/>
 
 按照如上的层次结构，API 的一致性由下至上依次递增，接口的表现能力由下至上依次递减，各层的核心功能如下：
 
@@ -72,7 +72,7 @@ Stateful Stream Processing 是最低级别的抽象，它通过 Process Function
 - **Dispatcher**：负责接收客户端提交的执行程序，并传递给 JobManager 。除此之外，它还提供了一个 WEB UI 界面，用于监控作业的执行情况。
 - **ResourceManager** ：负责管理 slots 并协调集群资源。ResourceManager 接收来自 JobManager 的资源请求，并将存在空闲 slots 的 TaskManagers 分配给 JobManager 执行任务。Flink 基于不同的部署平台，如 YARN , Mesos，K8s 等提供了不同的资源管理器，当 TaskManagers 没有足够的 slots 来执行任务时，它会向第三方平台发起会话来请求额外的资源。
 
-<div align="center"> <img src="pictures/flink-application-submission.png"/> </div>
+<img src="../../picture/flink-application-submission.png"/>
 
 
 #### 2. Task & SubTask
@@ -81,7 +81,7 @@ Stateful Stream Processing 是最低级别的抽象，它通过 Process Function
 
 在执行分布式计算时，Flink 将可以链接的操作 (operators) 链接到一起，这就是 Task。之所以这样做， 是为了减少线程间切换和缓冲而导致的开销，在降低延迟的同时可以提高整体的吞吐量。 但不是所有的 operator 都可以被链接，如下 keyBy 等操作会导致网络 shuffle 和重分区，因此其就不能被链接，只能被单独作为一个 Task。  简单来说，一个 Task 就是一个可以链接的最小的操作链 (Operator Chains) 。如下图，source 和 map 算子被链接到一块，因此整个作业就只有三个 Task：
 
-<div align="center"> <img src="pictures/flink-task-subtask.png"/> </div>
+<img src="../../picture/flink-task-subtask.png"/>
 
 
 解释完 Task ，我们在解释一下什么是 SubTask，其准确的翻译是： *A subtask is one parallel slice of a task*，即一个 Task 可以按照其并行度拆分为多个 SubTask。如上图，source & map 具有两个并行度，KeyBy 具有两个并行度，Sink 具有一个并行度，因此整个虽然只有 3 个 Task，但是却有 5 个 SubTask。Jobmanager 负责定义和拆分这些 SubTask，并将其交给 Taskmanagers 来执行，每个 SubTask 都是一个单独的线程。
@@ -90,27 +90,24 @@ Stateful Stream Processing 是最低级别的抽象，它通过 Process Function
 
 理解了 SubTasks ，我们再来看看其与 Slots 的对应情况。一种可能的分配情况如下：
 
-<div align="center"> <img src="pictures/flink-tasks-slots.png"/> </div>
+<img src="../../picture/flink-tasks-slots.png"/>
 
 
 这时每个 SubTask 线程运行在一个独立的 TaskSlot， 它们共享所属的 TaskManager 进程的TCP 连接（通过多路复用技术）和心跳信息 (heartbeat messages)，从而可以降低整体的性能开销。此时看似是最好的情况，但是每个操作需要的资源都是不尽相同的，这里假设该作业 keyBy 操作所需资源的数量比 Sink 多很多 ，那么此时 Sink 所在 Slot 的资源就没有得到有效的利用。
 
 基于这个原因，Flink 允许多个 subtasks 共享 slots，即使它们是不同 tasks 的 subtasks，但只要它们来自同一个 Job 就可以。假设上面 souce & map 和 keyBy 的并行度调整为 6，而 Slot 的数量不变，此时情况如下：
 
-<div align="center"> <img src="pictures/flink-subtask-slots.png"/> </div>
-
+<img src="../../picture/flink-subtask-slots.png"/>
 
 可以看到一个 Task Slot 中运行了多个 SubTask 子任务，此时每个子任务仍然在一个独立的线程中执行，只不过共享一组 Sot 资源而已。那么 Flink 到底如何确定一个 Job 至少需要多少个 Slot 呢？Flink 对于这个问题的处理很简单，默认情况一个 Job 所需要的 Slot 的数量就等于其 Operation 操作的最高并行度。如下， A，B，D 操作的并行度为 4，而 C，E 操作的并行度为 2，那么此时整个 Job 就需要至少四个 Slots 来完成。通过这个机制，Flink 就可以不必去关心一个 Job 到底会被拆分为多少个 Tasks 和 SubTasks。
 
-<div align="center"> <img src="pictures/flink-task-parallelism.png"/> </div>
-
-
+<img src="../../picture/flink-task-parallelism.png"/>
 
 #### 4. 组件通讯
 
 Flink 的所有组件都基于 Actor System 来进行通讯。Actor system是多种角色的 actor 的容器，它提供调度，配置，日志记录等多种服务，并包含一个可以启动所有 actor 的线程池，如果 actor 是本地的，则消息通过共享内存进行共享，但如果 actor 是远程的，则通过 RPC 的调用来传递消息。
 
-<div align="center"> <img src="pictures/flink-process.png"/> </div>
+<img src="../../picture/flink-process.png"/>
 
 
 ### 1.5 Flink 的优点
@@ -933,41 +930,24 @@ java版本：在java版本中的JDataSetDataSourceApp类中添加下面的方法
 | 算子名 |                    解释                    |
 | :----: | :----------------------------------------: |
 |  Map   | Takes one element and produces one element |
-|
-|flapMap|Takes one element and produces zero, one, or more elements
-|
-|MapPartition|Transforms a parallel partition in a single function call. The function gets the partition as an Iterable stream and can produce an arbitrary number of result values. The number of elements in each partition depends on the degree-of-parallelism and previous operations
-|
-|Filter|Evaluates a boolean function for each element and retains those for which the function returns true.IMPORTANT: The system assumes that the function does not modify the elements on which the predicate is applied. Violating this assumption can lead to incorrect results
-|
-|Reduce|Combines a group of elements into a single element by repeatedly combining two elements into one. Reduce may be applied on a full data set or on a grouped data set
-|
-|ReduceGroup|Combines a group of elements into one or more elements. ReduceGroup may be applied on a full data set or on a grouped data set
-|
-|Aggregate|Aggregates a group of values into a single value. Aggregation functions can be thought of as built-in reduce functions. Aggregate may be applied on a full data set, or on a grouped data set
-|
-|Distinct|Returns the distinct elements of a data set. It removes the duplicate entries from the input DataSet, with respect to all fields of the elements, or a subset of fields
-|
-|Join|Joins two data sets by creating all pairs of elements that are equal on their keys. Optionally uses a JoinFunction to turn the pair of elements into a single element, or a FlatJoinFunction to turn the pair of elements into arbitrarily many (including none) elements. See the keys section to learn how to define join keys
-|
-|OuterJoin|Performs a left, right, or full outer join on two data sets. Outer joins are similar to regular (inner) joins and create all pairs of elements that are equal on their keys. In addition, records of the "outer" side (left, right, or both in case of full) are preserved if no matching key is found in the other side. Matching pairs of elements (or one element and a null value for the other input) are given to a JoinFunction to turn the pair of elements into a single element, or to a FlatJoinFunction to turn the pair of elements into arbitrarily many (including none) elements. See the keys section to learn how to define join keys
-|
+|flapMap |Takes one element and produces zero, one, or more elements|
+|MapPartition|Transforms a parallel partition in a single function call. The function gets the partition as an Iterable stream and can produce an arbitrary number of result values. The number of elements in each partition depends on the degree-of-parallelism and previous operations|
+|Filter|Evaluates a boolean function for each element and retains those for which the function returns true.IMPORTANT: The system assumes that the function does not modify the elements on which the predicate is applied. Violating this assumption can lead to incorrect results|
+|Reduce|Combines a group of elements into a single element by repeatedly combining two elements into one. Reduce may be applied on a full data set or on a grouped data set|
+|ReduceGroup|Combines a group of elements into one or more elements. ReduceGroup may be applied on a full data set or on a grouped data set|
+|Aggregate|Aggregates a group of values into a single value. Aggregation functions can be thought of as built-in reduce functions. Aggregate may be applied on a full data set, or on a grouped data set|
+|Distinct|Returns the distinct elements of a data set. It removes the duplicate entries from the input DataSet, with respect to all fields of the elements, or a subset of fields|
+|Join|Joins two data sets by creating all pairs of elements that are equal on their keys. Optionally uses a JoinFunction to turn the pair of elements into a single element, or a FlatJoinFunction to turn the pair of elements into arbitrarily many (including none) elements. See the keys section to learn how to define join keys|
+|OuterJoin|Performs a left, right, or full outer join on two data sets. Outer joins are similar to regular (inner) joins and create all pairs of elements that are equal on their keys. In addition, records of the "outer" side (left, right, or both in case of full) are preserved if no matching key is found in the other side. Matching pairs of elements (or one element and a null value for the other input) are given to a JoinFunction to turn the pair of elements into a single element, or to a FlatJoinFunction to turn the pair of elements into arbitrarily many (including none) elements. See the keys section to learn how to define join keys|
 |CoGroup|The two-dimensional variant of the reduce operation. Groups each input on one or more fields and then joins the groups. The transformation function is called per pair of groups. See the keys section to learn how to define coGroup keys|
-|Cross|Builds the Cartesian product (cross product) of two inputs, creating all pairs of elements. Optionally uses a CrossFunction to turn the pair of elements into a single element
-|
-|Union|Produces the union of two data sets
-|
-|Rebalance|Evenly rebalances the parallel partitions of a data set to eliminate data skew. Only Map-like transformations may follow a rebalance transformation
-|
-|Hash-Partition|Hash-partitions a data set on a given key. Keys can be specified as position keys, expression keys, and key selector functions
-|
+|Cross|Builds the Cartesian product (cross product) of two inputs, creating all pairs of elements. Optionally uses a CrossFunction to turn the pair of elements into a single element|
+|Union|Produces the union of two data sets|
+|Rebalance|Evenly rebalances the parallel partitions of a data set to eliminate data skew. Only Map-like transformations may follow a rebalance transformation|
+|Hash-Partition|Hash-partitions a data set on a given key. Keys can be specified as position keys, expression keys, and key selector functions|
 |Range-Partition|Range-partitions a data set on a given key. Keys can be specified as position keys, expression keys, and key selector functions|
-|Custom Partitioning|Assigns records based on a key to a specific partition using a custom Partitioner function. The key can be specified as position key, expression key, and key selector function.Note: This method only works with a single field key
-|
-|Sort Partition|Locally sorts all partitions of a data set on a specified field in a specified order. Fields can be specified as tuple positions or field expressions. Sorting on multiple fields is done by chaining sortPartition() calls
-|
-|First-n|Returns the first n (arbitrary) elements of a data set. First-n can be applied on a regular data set, a grouped data set, or a grouped-sorted data set. Grouping keys can be specified as key-selector functions or field position keys
-|
+|Custom Partitioning|Assigns records based on a key to a specific partition using a custom Partitioner function. The key can be specified as position key, expression key, and key selector function.Note: This method only works with a single field key|
+|Sort Partition|Locally sorts all partitions of a data set on a specified field in a specified order. Fields can be specified as tuple positions or field expressions. Sorting on multiple fields is done by chaining sortPartition() calls|
+|First-n|Returns the first n (arbitrary) elements of a data set. First-n can be applied on a regular data set, a grouped data set, or a grouped-sorted data set. Grouping keys can be specified as key-selector functions or field position keys|
 
 #### 1. Scala版高频算子的实现
 
@@ -2805,7 +2785,7 @@ Time Windows 用于以时间为维度来进行数据聚合，具体分为以下�
 
 滚动窗口 (Tumbling Windows) 是指彼此之间没有重叠的窗口。例如：每隔1小时统计过去1小时内的商品点击量，那么 1 天就只能分为 24 个窗口，每个窗口彼此之间是不存在重叠的，具体如下：
 
-<div align="center"> <img width="600px" src="pictures/flink-tumbling-windows.png"/> </div>
+<img src="../../picture/flink-tumbling-windows.png"/>
 
 
 这里我们以词频统计为例，给出一个具体的用例，代码如下：
@@ -2828,15 +2808,13 @@ env.execute("Flink Streaming");
 
 测试结果如下：
 
-<div align="center"> <img src="pictures/flink-window-word-count.png"/> </div>
-
-
+<img src="../../picture/flink-window-word-count.png"/>
 
 #### 4. Sliding Windows
 
 滑动窗口用于滚动进行聚合分析，例如：每隔 6 分钟统计一次过去一小时内所有商品的点击量，那么统计窗口彼此之间就是存在重叠的，即 1天可以分为 240 个窗口。图示如下：
 
-<div align="center"> <img width="600px" src="pictures/flink-sliding-windows.png"/> </div>
+<img src="../../picture/flink-sliding-windows.png"/>
 
 
 可以看到 window 1 - 4 这四个窗口彼此之间都存在着时间相等的重叠部分。想要实现滑动窗口，只需要在使用 timeWindow 方法时额外传递第二个参数作为滚动时间即可，具体如下：
@@ -2850,7 +2828,7 @@ timeWindow(Time.minutes(1),Time.seconds(3))
 
 当用户在进行持续浏览时，可能每时每刻都会有点击数据，例如在活动区间内，用户可能频繁的将某类商品加入和移除购物车，而你只想知道用户本次浏览最终的购物车情况，此时就可以在用户持有的会话结束后再进行统计。想要实现这类统计，可以通过 Session Windows 来进行实现。
 
-<div align="center"> <img width="600px" src="pictures/flink-session-windows.png"/> </div>
+<img src="../../picture/flink-session-windows.png"/> 
 
 
 具体的实现代码如下：
@@ -2866,7 +2844,7 @@ window(EventTimeSessionWindows.withGap(Time.seconds(10)))
 
 最后一个窗口是全局窗口， 全局窗口会将所有 key 相同的元素分配到同一个窗口中，其通常配合触发器 (trigger) 进行使用。如果没有相应触发器，则计算将不会被执行。
 
-<div align="center"> <img width="600px" src="pictures/flink-non-windowed.png"/> </div>
+<img src="../../picture/flink-non-windowed.png"/>
 
 
 这里继续以上面词频统计的案例为例，示例代码如下：
@@ -2901,8 +2879,6 @@ public WindowedStream<T, KEY, GlobalWindow> countWindow(long size, long slide) {
         .trigger(CountTrigger.of(slide));
 }
 ```
-
-
 
 #### 8. 参考资料
 
@@ -3452,6 +3428,7 @@ object LogAnalysis {
 
 再执行这下面的数据
 
+```
 curl -H "Content-Type: application/json" -XPOST 'http://localhost:9200/cdn/traffic/_mapping?pretty' -d '{
 "traffic":{
 	"properties":{
@@ -3462,6 +3439,7 @@ curl -H "Content-Type: application/json" -XPOST 'http://localhost:9200/cdn/traff
     }
 }
 '
+```
 
 
 ## 四、将数据写入MySQL
@@ -3469,6 +3447,7 @@ curl -H "Content-Type: application/json" -XPOST 'http://localhost:9200/cdn/traff
 需求：CDN业务
 userid对应多个域名
 
+```
 userid: 8000000
 
 domains:
@@ -3478,14 +3457,14 @@ domains:
 	v4.go2yd.com
 	vmi.go2yd.com
 
-
 userid: 8000001
 	test.gifshow.com
+```
 
 用户id和域名的映射关系
 	从日志里能拿到domain，还得从另外一个表(MySQL)里面去获取userid和domain的映射关系
 
-
+```
 CREATE TABLE user_domain_config(
 id int unsigned auto_increment,
 user_id varchar(40) not null,
@@ -3499,6 +3478,7 @@ insert into user_domain_config(user_id,domain) values('8000000','v2.go2yd.com');
 insert into user_domain_config(user_id,domain) values('8000000','v3.go2yd.com');
 insert into user_domain_config(user_id,domain) values('8000000','v4.go2yd.com');
 insert into user_domain_config(user_id,domain) values('8000000','vmi.go2yd.com');
+```
 
 
 在做实时数据清洗的时候，不仅需要处理raw日志，还需要关联MySQL表里的数据

@@ -1,55 +1,54 @@
-# 第一部分——HDFS
+# 第一部分——Hadoop
 
-## 一、介绍
+## 一、HDFS
 
-**HDFS** （Hadoop Distributed File System）是 Hadoop 下的分布式文件系统，具有高容错、高吞吐量等特性，可以部署在低成本的硬件上。
+### 1.1介绍
 
-普通的文件系统：例如Linux、Windows、Mac等，有着清晰的目录结构，存放的是文件或者文件夹，对外提供创建、修改、删除、查看、移动等等。
+**HDFS** （Hadoop Distributed File System）是 Hadoop 下的分布式文件系统，是 Hadoop 的核心组件之一，具有高容错、高吞吐量等特性，可以部署在低成本的硬件上。
 
-分布式文件系统：除了包括普通文加系统的功能，还能够横跨N个机器
+在现代的企业环境中，单机容量往往无法存储大量数据，需要跨机器存储。统一管理分布在集群上的文件系统称为**分布式文件系统**。
 
-## 二、HDFS 设计原理
-
-<div align="center"> <img width="600px" src="pictures/hdfsarchitecture.png"/> </div>
-
-### 2.1 HDFS 设计目标
+ HDFS  使用多台计算机存储文件，并且提供统一的访问接口，像是访问一个普通文件系统一样使用分布式文件系统。
 
 硬件的错误是非常常见的，在一个HDFS集群里，有着成百上千的服务器，每个机器只存储文件的部分数据，默认使用3个副本，且集群中有着一个可以监控集群状况的组件。
 
 HDFS更多的用来做数据批处理，存储大规模数据，不适合低延时数据访问和小文件存储，不适合实时访问。
 
-### 2.2 HDFS 架构（非常重要，面试重点）
+### 1.2 HDFS 设计架构
 
-HDFS 遵循主/从（master/slave）架构，由单个 NameNode(简称NN) 和多个 DataNode(简称DN) 组成：
+<img src="../../picture/hdfsarchitecture.png"/>
 
-- **NameNode** : 充当master的职责，负责执行有关 ` 文件系统命名空间 ` 的操作，例如打开，关闭、重命名文件和目录等。它提供客户端对文件的访问，还负责集群元数据的存储，记录着文件中各个数据块的位置信息。例如，存储一个150MB文件，默认blocksize:128MB，150MB的文件会拆分成两个block来存储。block1:128MB，block2：22MB，NN会记录下每个块存放在哪个DN上。
-- **DataNode**：充当slave，负责提供来自文件系统客户端的读写请求，执行块的创建，删除等操作。
+HDFS 遵循主/从（master/slave）架构，由三部分组成： **NameNode** 和 **DataNode** 以及 **SecondaryNamenode**：
 
-### 2.3 详解文件系统命名空间
+- **NameNode** : 充当master的职责，负责管理整个**文件系统的元数据**，它提供客户端对文件的访问，还负责集群元数据的存储，记录着文件中各个数据块的位置信息。元数据保存在内存中，保存的是文件、block、DataNode之间的映射关系。
+- **DataNode**：充当slave，负责管理用户的**文件数据块**，执行块的创建，删除等操作。每一个数据块都可以在多个 DataNode 上存储多个副本，默认为3个，默认每块128M。文件内容存放在本地磁盘上，维护block id到DataNode本地文件的映射关系。
+- **Secondary NameNode** ：辅助 NameNode 管理元数据信息，可以理解为NameNode的备份作用，但是又不全是备份。用来监控 HDFS 状态的辅助后台程序，每隔一段时间获取 HDFS 元数据的快照。
+
+### 1.3 详解文件系统命名空间
 
 HDFS 的 ` 文件系统命名空间 ` 的层次结构与大多数文件系统类似 (如 Linux下的/home/Documents/dev/BigData/Hadoop/HadoopPictures)， 支持目录和文件的创建、移动、删除和重命名等操作，支持配置用户和访问权限，但不支持硬链接和软连接。`NameNode` 负责维护文件系统名称空间，记录对名称空间或其属性的任何更改，应用程序可以自己指定副本数。
 
-### 2.5 数据复制
+### 1.4 数据复制
 
 由于 Hadoop 被设计运行在廉价的机器上，这意味着硬件是不可靠的，为了保证容错性，HDFS 提供了数据复制机制。HDFS 将每一个文件存储为一系列**块**，每个块由多个副本来保证容错，块的大小和复制因子可以自行配置（默认情况下，块大小是 128M，默认复制因子是 3）。
 
-<div align="center"> <img width="600px" src="pictures/hdfsdatanodes.png"/> </div>
+<img width="600px" src="../../picture/hdfsdatanodes.png"/>
 
-### 2.6 数据复制的实现原理
+### 1.5 数据复制的实现原理
 
 大型的 HDFS 实例在通常分布在多个机架的多台服务器上，不同机架上的两台服务器之间通过交换机进行通讯。在大多数情况下，同一机架中的服务器间的网络带宽大于不同机架中的服务器之间的带宽。因此 HDFS 采用机架感知副本放置策略，对于常见情况，当复制因子为 3 时，HDFS 的放置策略是：
 
-在写入程序位于 `datanode` 上时，就优先将写入文件的一个副本放置在该 `datanode` 上，否则放在随机 `datanode` 上。之后在另一个远程机架上的任意一个节点上放置另一个副本，并在该机架上的另一个节点上放置最后一个副本。此策略可以减少机架间的写入流量，从而提高写入性能。
+低版本Hadoop（2.9.0以下），第一个副本在client所处的节点上。如果客户端在集群外，随机选一个。第二个副本和第一个副本位于相同机架，随机节点。第三个副本位于不同机架，随机节点。
 
-<div align="center"> <img src="pictures/hdfs-机架.png"/> </div>
+高版本Hadoop（2.9.0以及以后），第一个副本在client所处的节点上。如果客户端在集群外，随机选一个。第二个副本和第一个副本位于不相同机架的随机节点上。第三个副本和第二个副本位于相同机架，节点随机。
 
-如果复制因子大于 3，则随机确定第 4 个和之后副本的放置位置，同时保持每个机架的副本数量低于上限，上限值通常为 `（复制系数 - 1）/机架数量 + 2`，需要注意的是不允许同一个 `dataNode` 上具有同一个块的多个副本。
+此策略可以减少机架间的写入流量，从而提高写入性能。
 
-### 2.7  副本的选择
+### 1.6  副本的选择
 
 为了最大限度地减少带宽消耗和读取延迟，HDFS 在执行读取请求时，优先读取距离读取器最近的副本。如果在与读取器节点相同的机架上存在副本，则优先选择该副本。如果 HDFS 群集跨越多个数据中心，则优先选择本地数据中心上的副本。
 
-### 2.8 架构的稳定性
+### 1.7 架构的稳定性
 
 #### 1. 心跳机制和重新复制
 
@@ -69,6 +68,21 @@ HDFS 的 ` 文件系统命名空间 ` 的层次结构与大多数文件系统类
 
 快照支持在特定时刻存储数据副本，在数据意外损坏时，可以通过回滚操作恢复到健康的数据状态。
 
+#### 5.HDFS 的安全模式
+
+**安全模式是hadoop的一种保护机制，用于保证集群中的数据块的安全性**。当集群启动的时候，会首先进入安全模式。当系统处于安全模式时会检查数据块的完整性。
+
+假设我们设置的副本数（即参数dfs.replication）是3，那么在datanode上就应该有3个副本存在，假设只存在2个副本，那么比例就是2/3=0.666。hdfs默认的副本率0.999。我们的副本率0.666明显小于0.999，因此系统会自动的复制副本到其他dataNode，使得副本率不小于0.999。如果系统中有5个副本，超过我们设定的3个副本，那么系统也会删除多于的2个副本。
+
+**在安全模式状态下，文件系统只接受读数据请求，而不接受删除、修改等变更请求**。在，当整个系统达到安全标准时，HDFS自动离开安全模式。30s
+
+安全模式操作命令
+
+```shell
+hdfs  dfsadmin  -safemode  get #查看安全模式状态
+hdfs  dfsadmin  -safemode  enter #进入安全模式
+hdfs  dfsadmin  -safemode  leave #离开安全模式
+```
 
 ## 三、图解HDFS存储原理
 
@@ -76,52 +90,674 @@ HDFS 的 ` 文件系统命名空间 ` 的层次结构与大多数文件系统类
 
 ### 3.1 HDFS写数据原理
 
-<div align="center"> <img  src="pictures/hdfs-write-1.jpg"/> </div>
+<img  src="../../picture/hdfs-write-1.jpg"/><img  src="../../picture/hdfs-write-2.jpg"/>
 
-<div align="center"> <img  src="pictures/hdfs-write-2.jpg"/> </div>
+<img  src="../../picture/hdfs-write-3.jpg"/>
 
-<div align="center"> <img  src="pictures/hdfs-write-3.jpg"/> </div>
+1. Client 发起文件上传请求，通过 RPC 与 NameNode 建立通讯, NameNode 检查目标文件是否已存在，父目录是否存在，返回是否可以上传；
+2. Client 请求第一个 block 该传输到哪些 DataNode 服务器上；
+3. NameNode 根据配置文件中指定的备份数量及机架感知原理进行文件分配, 返回可用的 DataNode 的地址如：A, B, C；
 
+4. Client 请求 3 台 DataNode 中的一台 A 上传数据（本质上是一个 RPC 调用，建立 pipeline ），A 收到请求会继续调用 B，然后 B 调用 C，将整个 pipeline 建立完成， 后逐级返回 client；
 
+5. Client 开始往 A 上传第一个 block（先从磁盘读取数据放到一个本地内存缓存），以 packet 为单位（默认64K），A 收到一个 packet 就会传给 B，B 传给 C。A 每传一个 packet 会放入一个应答队列等待应答；
+
+6. 数据被分割成一个个 packet 数据包在 pipeline 上依次传输，在 pipeline 反方向上， 逐个发送 ack（命令正确应答），最终由 pipeline 中第一个 DataNode 节点 A 将 pipelineack 发送给 Client；
+
+7. 当一个 block 传输完成之后，Client 再次请求 NameNode 上传第二个 block，重复步骤 2；
 
 ### 3.2 HDFS读数据原理
 
-<div align="center"> <img  src="pictures/hdfs-read-1.jpg"/> </div>
+<img  src="../../picture/hdfs-read-1.jpg"/>
 
+1. Client向NameNode发起RPC请求，来确定请求文件block所在的位置；
+2. NameNode会视情况返回文件的部分或者全部block列表，对于每个block，NameNode 都会返回含有该 block 副本的 DataNode 地址；  这些返回的 DN 地址，会按照集群拓扑结构得出 DataNode  与客户端的距离，然后进行排序，排序两个规则：网络拓扑结构中距离 Client 近的排靠前；心跳机制中超时汇报的 DN 状态为  STALE，这样的排靠后；
+3. Client 选取排序靠前的 DataNode 来读取 block，如果客户端本身就是DataNode，那么将从本地直接获取数据(短路读取特性)；
+4. 底层上本质是建立 Socket Stream（FSDataInputStream），重复的调用父类 DataInputStream 的 read 方法，直到这个块上的数据读取完毕；
+5. 当读完列表的 block 后，若文件读取还没有结束，客户端会继续向NameNode 获取下一批的 block 列表；
+6. 读取完一个 block 都会进行 checksum 验证，如果读取 DataNode 时出现错误，客户端会通知 NameNode，然后再从下一个拥有该 block 副本的DataNode 继续读。
+7. **read 方法是并行的读取 block 信息，不是一块一块的读取**；NameNode 只是返回Client请求包含块的DataNode地址，并不是返回请求块的数据；
+8. 最终读取来所有的 block 会合并成一个完整的最终文件。
 
+> 从 HDFS 文件读写过程中，可以看出，HDFS 文件写入时是串行写入的，数据包先发送给节点A，然后节点A发送给B，B在给C；而HDFS文件读取是并行的， 客户端 Client 直接并行读取block所在的节点。
 
 ### 3.3 HDFS故障类型和其检测方法
 
-<div align="center"> <img  src="pictures/hdfs-tolerance-1.jpg"/> </div>
+<img  src="../../picture/hdfs-tolerance-1.jpg"/>
 
-<div align="center"> <img  src="pictures/hdfs-tolerance-2.jpg"/> </div>
-
-
+<img  src="../../picture/hdfs-tolerance-2.jpg"/>
 
 ### 3.4 读写故障的处理
 
-<div align="center"> <img  src="pictures/hdfs-tolerance-3.jpg"/> </div>
-
-
+<img  src="../../picture/hdfs-tolerance-3.jpg"/> 
 
 ### 3.5 DataNode 故障处理
 
-<div align="center"> <img  src="pictures/hdfs-tolerance-4.jpg"/> </div>
+<img  src="../../picture/hdfs-tolerance-4.jpg"/>
 
+### 3.6 NameNode 工作机制以及元数据管理
 
+<img  src="../../picture/210207_1.png"/>
 
-### 3.6 副本布局策略
+### 3.7 namenode 与 datanode 启动
 
-<div align="center"> <img  src="pictures/hdfs-tolerance-5.jpg"/> </div>
+- **namenode工作机制**
 
+1. 第一次启动namenode格式化后，创建fsimage和edits文件。如果不是第一次启动，直接加载编辑日志和镜像文件到内存。
+2. 客户端对元数据进行增删改的请求。
+3. namenode记录操作日志，更新滚动日志。
+4. namenode在内存中对数据进行增删改查。
 
-## 四、HDFS的操作
+- **secondary namenode工作机制**
+
+1. secondary namenode询问 namenode 是否需要 checkpoint。直接带回 namenode 是否检查结果。
+2. secondary namenode 请求执行 checkpoint。
+3. namenode 滚动正在写的edits日志。
+4. 将滚动前的编辑日志和镜像文件拷贝到 secondary namenode。
+5. secondary namenode 加载编辑日志和镜像文件到内存，并合并。
+6. 生成新的镜像文件 fsimage.chkpoint。
+7. 拷贝 fsimage.chkpoint 到 namenode。
+8. namenode将 fsimage.chkpoint 重新命名成fsimage。
+
+### 3.8 FSImage与edits详解
+
+所有的元数据信息都保存在了FsImage与Eidts文件当中，这两个文件就记录了所有的数据的元数据信息，元数据信息的保存目录配置在了 **hdfs-site.xml** 当中
+
+```xml
+		<!--fsimage文件存储的路径-->
+		<property>
+                <name>dfs.namenode.name.dir</name>
+                <value>file:///opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/namenodeDatas</value>
+        </property>
+        <!-- edits文件存储的路径 -->
+		<property>
+                <name>dfs.namenode.edits.dir</name>
+                <value>file:///opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/dfs/nn/edits</value>
+  		</property>
+```
+
+客户端对hdfs进行写文件时会首先被记录在edits文件中。edits修改时元数据也会更新。每次hdfs更新时edits先更新后客户端才会看到最新信息。
+
+fsimage：是namenode中关于元数据的镜像，一般称为检查点。
+
+**一般开始时对namenode的操作都放在edits中，为什么不放在fsimage中呢？**
+
+因为fsimage是namenode的完整的镜像，内容很大，如果每次都加载到内存的话生成树状拓扑结构，这是非常耗内存和CPU。
+
+fsimage内容包含了namenode管理下的所有datanode中文件及文件block及block所在的datanode的元数据信息。随着edits内容增大，就需要在一定时间点和fsimage合并。
+
+### 3.9 FSimage文件当中的文件信息查看
+
+- 使用命令 hdfs  oiv
+
+```text
+cd  /opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/namenodeDatas/current
+hdfs oiv -i fsimage_0000000000000000112 -p XML -o hello.xml
+```
+
+### 3.10 edits当中的文件信息查看
+
+- 查看命令 hdfs  oev
+
+```text
+cd  /opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/dfs/nn/edits
+hdfs oev -i  edits_0000000000000000112-0000000000000000113 -o myedit.xml -p XML
+```
+
+### 3.11 secondarynameNode如何辅助管理FSImage与Edits文件
+
+1. secnonaryNN通知NameNode切换editlog。
+2. secondaryNN从NameNode中获得FSImage和editlog(通过http方式)。
+3. secondaryNN将FSImage载入内存，然后开始合并editlog，合并之后成为新的fsimage。
+4. secondaryNN将新的fsimage发回给NameNode。
+5. NameNode用新的fsimage替换旧的fsimage。
+
+<img src="../../picture/210207_2.png" />
+
+完成合并的是 secondarynamenode，会请求namenode停止使用edits，暂时将新写操作放入一个新的文件中（edits.new)。
+
+secondarynamenode从namenode中**通过http get获得edits**，因为要和fsimage合并，所以也是通过http get 的方式把fsimage加载到内存，然后逐一执行具体对文件系统的操作，与fsimage合并，生成新的fsimage，然后把fsimage发送给namenode，**通过http post的方式**。
+
+namenode从secondarynamenode获得了fsimage后会把原有的fsimage替换为新的fsimage，把edits.new变成edits。同时会更新fsimage。
+
+hadoop进入安全模式时需要管理员使用dfsadmin的save namespace来创建新的检查点。
+
+secondarynamenode在合并edits和fsimage时需要消耗的内存和namenode差不多，所以一般把namenode和secondarynamenode放在不同的机器上。
+
+fsimage与edits的合并时机取决于两个参数，第一个参数是默认1小时fsimage与edits合并一次。
+
+- 第一个参数：时间达到一个小时fsimage与edits就会进行合并
+
+```text
+dfs.namenode.checkpoint.period     3600
+```
+
+- 第二个参数：hdfs操作达到1000000次也会进行合并
+
+```text
+dfs.namenode.checkpoint.txns       1000000
+```
+
+- 第三个参数：每隔多长时间检查一次hdfs的操作次数
+
+```text
+dfs.namenode.checkpoint.check.period   60
+```
+
+### 3.12 namenode元数据信息多目录配置
+
+为了保证元数据的安全性，我们一般都是先确定好我们的磁盘挂载目录，将元数据的磁盘做RAID1
+
+namenode的本地目录可以配置成多个，且每个目录存放内容相同，增加了可靠性。
+
+- 具体配置方案:
+
+  **hdfs-site.xml**
+
+```text
+	<property>
+         <name>dfs.namenode.name.dir</name>
+         <value>file:///export/servers/hadoop-2.6.0-cdh5.14.0/hadoopDatas/namenodeDatas</value>
+    </property>
+```
+
+### 3.13 namenode故障恢复
+
+在我们的secondaryNamenode对namenode当中的fsimage和edits进行合并的时候，每次都会先将namenode的fsimage与edits文件拷贝一份过来，所以fsimage与edits文件在secondarNamendoe当中也会保存有一份，如果namenode的fsimage与edits文件损坏，那么我们可以将secondaryNamenode当中的fsimage与edits拷贝过去给namenode继续使用，只不过有可能会丢失一部分数据。这里涉及到几个配置选项
+
+- namenode保存fsimage的配置路径
+
+```text
+<!--  namenode元数据存储路径，实际工作当中一般使用SSD固态硬盘，并使用多个固态硬盘隔开，冗余元数据 -->
+	<property>
+		<name>dfs.namenode.name.dir</name>
+		<value>file:///export/servers/hadoop-2.6.0-cdh5.14.0/hadoopDatas/namenodeDatas</value>
+	</property>
+```
+
+- namenode保存edits文件的配置路径
+
+```text
+<property>
+		<name>dfs.namenode.edits.dir</name>
+		<value>file:///export/servers/hadoop-2.6.0-cdh5.14.0/hadoopDatas/dfs/nn/edits</value>
+</property>
+```
+
+- secondaryNamenode保存fsimage文件的配置路径
+
+```text
+<property>
+		<name>dfs.namenode.checkpoint.dir</name>
+		<value>file:///export/servers/hadoop-2.6.0-cdh5.14.0/hadoopDatas/dfs/snn/name</value>
+</property>
+```
+
+- secondaryNamenode保存edits文件的配置路径
+
+```text
+<property>
+		<name>dfs.namenode.checkpoint.edits.dir</name>
+		<value>file:///export/servers/hadoop-2.6.0-cdh5.14.0/hadoopDatas/dfs/nn/snn/edits</value>
+</property>
+```
+
+**接下来我们来模拟namenode的故障恢复功能**
+
+1. 杀死namenode进程: 使用jps查看namenode的进程号 , kill -9 直接杀死。
+2. 删除namenode的fsimage文件和edits文件。
+
+> 根据上述配置, 找到namenode放置fsimage和edits路径. 直接全部rm -rf 删除。
+
+1. 拷贝secondaryNamenode的fsimage与edits文件到namenode的fsimage与edits文件夹下面去。
+
+> 根据上述配置, 找到secondaryNamenode的fsimage和edits路径, 将内容 使用cp -r 全部复制到namenode对应的目录下即可。
+
+1. 重新启动namenode, 观察数据是否存在
+
+### 3.14 DataNode工作机制以及数据存储
+
+- **datanode工作机制**
+
+1. 一个数据块在datanode上以文件形式存储在磁盘上，包括两个文件，一个是数据本身，一个是元数据包括数据块的长度，块数据的校验和，以及时间戳。
+2. DataNode启动后向namenode注册，通过后，周期性（1小时）的向namenode上报所有的块信息。(dfs.blockreport.intervalMsec)。
+3. 心跳是每3秒一次，心跳返回结果带有namenode给该datanode的命令如复制块数据到另一台机器，或删除某个数据块。如果超过10分钟没有收到某个datanode的心跳，则认为该节点不可用。
+4. 集群运行中可以安全加入和退出一些机器。
+
+- **数据完整性**
+
+1. 当DataNode读取block的时候，它会计算checksum。
+2. 如果计算后的checksum，与block创建时值不一样，说明block已经损坏。
+3. client读取其他DataNode上的block。
+4. datanode在其文件创建后周期验证checksum。
+
+- **掉线时限参数设置**
+
+datanode进程死亡或者网络故障造成datanode无法与namenode通信，namenode不会立即把该节点判定为死亡，要经过一段时间，这段时间暂称作超时时长。HDFS默认的超时时长为10分钟+30秒。如果定义超时时间为timeout，则超时时长的计算公式为：
+
+**timeout  = 2 \* dfs.namenode.heartbeat.recheck-interval + 10 \* dfs.heartbeat.interval。**
+
+而默认的dfs.namenode.heartbeat.recheck-interval 大小为5分钟，dfs.heartbeat.interval默认为3秒。
+
+需要注意的是hdfs-site.xml **配置文件中的heartbeat.recheck.interval的单位为毫秒**，**dfs.heartbeat.interval的单位为秒**。
+
+```xml
+<property>
+    <name>dfs.namenode.heartbeat.recheck-interval</name>
+    <value>300000</value>
+</property>
+<property>
+    <name>dfs.heartbeat.interval </name>
+    <value>3</value>
+</property>
+```
+
+- **DataNode的目录结构**
+
+  和namenode不同的是，datanode的存储目录是初始阶段自动创建的，不需要额外格式化。
+
+在/opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/datanodeDatas/current这个目录下查看版本号
+
+```shell
+    cat VERSION 
+    
+    #Thu Mar 14 07:58:46 CST 2019
+    storageID=DS-47bcc6d5-c9b7-4c88-9cc8-6154b8a2bf39
+    clusterID=CID-dac2e9fa-65d2-4963-a7b5-bb4d0280d3f4
+    cTime=0
+    datanodeUuid=c44514a0-9ed6-4642-b3a8-5af79f03d7a4
+    storageType=DATA_NODE
+    layoutVersion=-56
+```
+
+具体解释:
+
+storageID：存储id号。
+
+clusterID集群id，全局唯一。
+
+cTime属性标记了datanode存储系统的创建时间，对于刚刚格式化的存储系统，这个属性为0；但是在文件系统升级之后，该值会更新到新的时间戳。
+
+datanodeUuid：datanode的唯一识别码。
+
+storageType：存储类型。
+
+layoutVersion是一个负整数。通常只有HDFS增加新特性时才会更新这个版本号。
+
+- **datanode多目录配置**
+
+datanode也可以配置成多个目录，每个目录存储的数据不一样。即：数据不是副本。具体配置如下： - 只需要在value中使用逗号分隔出多个存储目录即可
+
+```shell
+  cd /opt/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+  <!--  定义dataNode数据存储的节点位置，实际工作中，一般先确定磁盘的挂载目录，然后多个目录用，进行分割  -->
+          <property>
+                  <name>dfs.datanode.data.dir</name>
+                  <value>file:///opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/datanodeDatas</value>
+          </property>
+```
+
+### 3.15 服役新数据节点
+
+需求说明:
+
+随着公司业务的增长，数据量越来越大，原有的数据节点的容量已经不能满足存储数据的需求，需要在原有集群基础上动态添加新的数据节点。
+
+#### 3.15.1 环境准备
+
+1. 复制一台新的虚拟机出来
+
+> 将我们纯净的虚拟机复制一台出来，作为我们新的节点
+
+1. 修改mac地址以及IP地址
+
+```shell
+修改mac地址命令
+	vim /etc/udev/rules.d/70-persistent-net.rules
+修改ip地址命令
+	vim /etc/sysconfig/network-scripts/ifcfg-eth0
+```
+
+1. 关闭防火墙，关闭selinux
+
+```shell
+关闭防火墙
+	service iptables stop
+关闭selinux
+	vim /etc/selinux/config
+```
+
+1. 更改主机名
+
+```shell
+更改主机名命令，将node04主机名更改为node04.hadoop.com
+vim /etc/sysconfig/network
+```
+
+1. 四台机器更改主机名与IP地址映射
+
+```shell
+四台机器都要添加hosts文件
+vim /etc/hosts
+
+192.168.52.100 node01.hadoop.com  node01
+192.168.52.110 node02.hadoop.com  node02
+192.168.52.120 node03.hadoop.com  node03
+192.168.52.130 node04.hadoop.com  node04
+```
+
+1. node04服务器关机重启
+
+```shell
+node04执行以下命令关机重启
+	reboot -h now
+```
+
+1. node04安装jdk
+
+```shell
+node04统一两个路径
+	mkdir -p /export/softwares/
+	mkdir -p /export/servers/
+```
+
+**然后解压jdk安装包，配置环境变量**
+
+1. 解压hadoop安装包
+
+```shell
+在node04服务器上面解压hadoop安装包到/export/servers , node01执行以下命令将hadoop安装包拷贝到node04服务器
+	cd /export/softwares/
+	scp hadoop-2.6.0-cdh5.14.0-自己编译后的版本.tar.gz node04:$PWD
+
+node04解压安装包
+	tar -zxf hadoop-2.6.0-cdh5.14.0-自己编译后的版本.tar.gz -C /export/servers/
+```
+
+1. 将node01关于hadoop的配置文件全部拷贝到node04
+
+```shell
+node01执行以下命令，将hadoop的配置文件全部拷贝到node04服务器上面
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop/
+	scp ./* node04:$PWD
+```
+
+#### 3.15.2 服役新节点具体步骤
+
+1. 创建dfs.hosts文件
+
+```shell
+在node01也就是namenode所在的机器的/export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop目录下创建dfs.hosts文件
+
+[root@node01 hadoop]# cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+[root@node01 hadoop]# touch dfs.hosts
+[root@node01 hadoop]# vim dfs.hosts
+
+添加如下主机名称（包含新服役的节点）
+node01
+node02
+node03
+node04
+```
+
+1. node01编辑hdfs-site.xml添加以下配置
+
+> 在namenode的hdfs-site.xml配置文件中增加dfs.hosts属性
+
+```shell
+node01执行以下命令 :
+
+cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+vim hdfs-site.xml
+
+# 添加一下内容
+	<property>
+         <name>dfs.hosts</name>
+         <value>/export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop/dfs.hosts</value>
+    </property>
+    <!--动态上下线配置: 如果配置文件中有, 就不需要配置-->
+    <property>
+		<name>dfs.hosts</name>
+		<value>/export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop/accept_host</value>
+	</property>
+	
+	<property>
+		<name>dfs.hosts.exclude</name>
+		<value>/export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop/deny_host</value>
+	</property>
+```
+
+1. 刷新namenode
+
+- node01执行以下命令刷新namenode
+
+```shell
+[root@node01 hadoop]# hdfs dfsadmin -refreshNodes
+Refresh nodes successful
+```
+
+1. 更新resourceManager节点
+
+- node01执行以下命令刷新resourceManager
+
+```shell
+[root@node01 hadoop]# yarn rmadmin -refreshNodes
+19/03/16 11:19:47 INFO client.RMProxy: Connecting to ResourceManager at node01/192.168.52.100:8033
+```
+
+1. namenode的slaves文件增加新服务节点主机名称
+
+> node01编辑slaves文件，并添加新增节点的主机，更改完后，slaves文件不需要分发到其他机器上面去
+
+```shell
+node01执行以下命令编辑slaves文件 :
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+	vim slaves
+	
+添加一下内容: 	
+node01
+node02
+node03
+node04
+```
+
+1. 单独启动新增节点
+
+```shell
+node04服务器执行以下命令，启动datanode和nodemanager : 
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0/
+	sbin/hadoop-daemon.sh start datanode
+	sbin/yarn-daemon.sh start nodemanager
+```
+
+1. 使用负载均衡命令，让数据均匀负载所有机器
+
+```shell
+node01执行以下命令 : 
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0/
+	sbin/start-balancer.sh
+```
+
+#### 3.15.3 退役旧数据
+
+1. 创建dfs.hosts.exclude配置文件
+
+在namenod所在服务器的/export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop目录下创建dfs.hosts.exclude文件，并添加需要退役的主机名称
+
+```shell
+node01执行以下命令 : 
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+	touch dfs.hosts.exclude
+	vim dfs.hosts.exclude
+添加以下内容:
+	node04.hadoop.com
+
+特别注意：该文件当中一定要写真正的主机名或者ip地址都行，不能写node04
+```
+
+1. 编辑namenode所在机器的hdfs-site.xml
+
+> 编辑namenode所在的机器的hdfs-site.xml配置文件，添加以下配置
+
+```shell
+cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+vim hdfs-site.xml
+
+#添加一下内容:
+	<property>
+         <name>dfs.hosts.exclude</name>
+         <value>/export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop/dfs.hosts.exclude</value>
+   </property>
+```
+
+1. 刷新namenode，刷新resourceManager
+
+```shell
+在namenode所在的机器执行以下命令，刷新namenode，刷新resourceManager : 
+
+hdfs dfsadmin -refreshNodes
+yarn rmadmin -refreshNodes
+```
+
+1. 节点退役完成，停止该节点进程
+
+等待退役节点状态为decommissioned（所有块已经复制完成），停止该节点及节点资源管理器。注意：如果副本数是3，服役的节点小于等于3，是不能退役成功的，需要修改副本数后才能退役。
+
+```shell
+node04执行以下命令，停止该节点进程 : 
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0
+	sbin/hadoop-daemon.sh stop datanode
+	sbin/yarn-daemon.sh stop nodemanager
+```
+
+1. 从include文件中删除退役节点
+
+```shell
+namenode所在节点也就是node01执行以下命令删除退役节点 :
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+	vim dfs.hosts
+	
+删除后的内容: 删除了node04
+node01
+node02
+node03
+```
+
+1. node01执行一下命令刷新namenode，刷新resourceManager
+
+```shell
+hdfs dfsadmin -refreshNodes
+yarn rmadmin -refreshNodes
+```
+
+1. 从namenode的slave文件中删除退役节点
+
+```shell
+namenode所在机器也就是node01执行以下命令从slaves文件中删除退役节点 : 
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+	vim slaves
+删除后的内容: 删除了 node04 
+node01
+node02
+node03
+```
+
+1. 如果数据负载不均衡，执行以下命令进行均衡负载
+
+```shell
+node01执行以下命令进行均衡负载
+	cd /export/servers/hadoop-2.6.0-cdh5.14.0/
+	sbin/start-balancer.sh
+```
+
+### 3.16 hdfs快照snapShot管理
+
+快照顾名思义，就是相当于对我们的hdfs文件系统做一个备份，我们可以通过快照对我们指定的文件夹设置备份，但是添加快照之后，并不会立即复制所有文件，而是指向同一个文件。当写入发生时，才会产生新文件
+
+1. 快照使用基本语法
+
+```text
+1、 开启指定目录的快照功能
+	hdfs dfsadmin  -allowSnapshot  路径 
+2、禁用指定目录的快照功能（默认就是禁用状态）
+	hdfs dfsadmin  -disallowSnapshot  路径
+3、给某个路径创建快照snapshot
+	hdfs dfs -createSnapshot  路径
+4、指定快照名称进行创建快照snapshot
+	hdfs dfs  -createSanpshot 路径 名称    
+5、给快照重新命名
+	hdfs dfs  -renameSnapshot  路径 旧名称  新名称
+6、列出当前用户所有可快照目录
+	hdfs lsSnapshottableDir  
+7、比较两个快照的目录不同之处
+	hdfs snapshotDiff  路径1  路径2
+8、删除快照snapshot
+	hdfs dfs -deleteSnapshot <path> <snapshotName> 
+```
+
+2. 快照操作实际案例
+
+```text
+1、开启与禁用指定目录的快照
+
+    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -allowSnapshot /user
+
+    Allowing snaphot on /user succeeded
+
+    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -disallowSnapshot /user
+
+    Disallowing snaphot on /user succeeded
+
+2、对指定目录创建快照
+
+	注意：创建快照之前，先要允许该目录创建快照
+
+    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -allowSnapshot /user
+
+    Allowing snaphot on /user succeeded
+
+    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfs -createSnapshot /user    
+
+    Created snapshot /user/.snapshot/s20190317-210906.549
+
+	通过web浏览器访问快照
+
+	http://node01:50070/explorer.html#/user/.snapshot/s20190317-210906.549
+
+3、指定名称创建快照
+
+    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfs -createSnapshot /user mysnap1
+
+    Created snapshot /user/.snapshot/mysnap1
+
+4、重命名快照
+
+	hdfs dfs -renameSnapshot /user mysnap1 mysnap2
+ 
+5、列出当前用户所有可以快照的目录
+
+	hdfs lsSnapshottableDir
+
+6、比较两个快照不同之处
+
+    hdfs dfs -createSnapshot /user snap1
+
+    hdfs dfs -createSnapshot /user snap2
+
+    hdfs snapshotDiff  snap1 snap2
+
+7、删除快照
+
+	hdfs dfs -deleteSnapshot /user snap1
+```
+
+## 四、HDFS常用操作
 
 HDFS的操作跟shell的操作一致，在hadoop目录下进行操作，前缀hadoop fs 或者hdfs dfs加上下面的各类操作，常用的，例如：
 
-操作 | 功能 |  
--|-|-
--put | 将文件上传 
+|操作 | 功能 |  
+|--|--|
+|-put | 将文件上传 |
 -ls | 显示当前仓库中有哪些文件
 -cat |查看文件
 -mkdir | 创建一个文件夹
@@ -134,57 +770,8 @@ HDFS的操作跟shell的操作一致，在hadoop目录下进行操作，前缀ha
 -rmr | 此命令相当于-rm -r，删除一个文件夹
 -text | 查看某个文件
 -R | 递归显示某个文件夹中的文件
-    
-上传一个本地文件到hdfs后，可以使用Hadoop fs -du -s -h /文件，可以查看文件的具体大小。
-    
-其他操作：
-
-```
-Usage: hadoop fs [generic options]
-    [-appendToFile <localsrc> ... <dst>]
-    [-cat [-ignoreCrc] <src> ...]
-    [-checksum <src> ...]
-    [-chgrp [-R] GROUP PATH...]
-    [-chmod [-R] <MODE[,MODE]... | OCTALMODE> PATH...]
-    [-chown [-R] [OWNER][:[GROUP]] PATH...]
-    [-copyFromLocal [-f] [-p] [-l] <localsrc> ... <dst>]
-    [-copyToLocal [-p] [-ignoreCrc] [-crc] <src> ... <localdst>]
-    [-count [-q] [-h] [-v] [-x] <path> ...]
-    [-cp [-f] [-p | -p[topax]] <src> ... <dst>]
-    [-createSnapshot <snapshotDir> [<snapshotName>]]
-    [-deleteSnapshot <snapshotDir> <snapshotName>]
-    [-df [-h] [<path> ...]]
-    [-du [-s] [-h] [-x] <path> ...]
-    [-expunge]
-    [-find <path> ... <expression> ...]
-    [-get [-p] [-ignoreCrc] [-crc] <src> ... <localdst>]
-    [-getfacl [-R] <path>]
-    [-getfattr [-R] {-n name | -d} [-e en] <path>]
-    [-getmerge [-nl] <src> <localdst>]
-    [-help [cmd ...]]
-    [-ls [-C] [-d] [-h] [-q] [-R] [-t] [-S] [-r] [-u] [<path> ...]]
-    [-mkdir [-p] <path> ...]
-    [-moveFromLocal <localsrc> ... <dst>]
-    [-moveToLocal <src> <localdst>]
-    [-mv <src> ... <dst>]
-    [-put [-f] [-p] [-l] <localsrc> ... <dst>]
-    [-renameSnapshot <snapshotDir> <oldName> <newName>]
-    [-rm [-f] [-r|-R] [-skipTrash] <src> ...]
-    [-rmdir [--ignore-fail-on-non-empty] <dir> ...]
-    [-setfacl [-R] [{-b|-k} {-m|-x <acl_spec>} <path>]|[--set <acl_spec> <path>]]
-    [-setfattr {-n name [-v value] | -x name} <path>]
-    [-setrep [-R] [-w] <rep> <path> ...]
-    [-stat [format] <path> ...]
-    [-tail [-f] <file>]
-    [-test -[defsz] <path>]
-    [-text [-ignoreCrc] <src> ...]
-    [-touchz <path> ...]
-    [-usage [cmd ...]]
-```
 
 ## 五、HDFS API的初识
-
-> 相关的代码存放在 BigData-Learning/Hadoop/codes/HDFS/HDFS-API初识 目录中
 
 1. 首先在IDEA上，使用Maven来构建项目。创建一个maven-quickstart项目，引入下面的pom文件
 
@@ -279,8 +866,6 @@ Usage: hadoop fs [generic options]
     </pluginManagement>
   </build>
 </project>
-
-
 ```
 
 2. 使用HDFS API进行目录的创建，1.首先创建configuration 2.获取filesystem 3.设置相关的操作路径 4.调用api操作
@@ -377,8 +962,6 @@ public class HdfsApp {
 ```
 
 ## 六、HDFS实战
-
-> 相关的代码存放在 BigData-Learning/Hadoop/codes/HDFS/HDFS-实战 目录中
 
 1. 项目需求：使用HDFS JavaAPI完成HDFS文件系统上的文件的词频统计，即仅使用HDFS完成wordcount项目。
 
@@ -754,7 +1337,7 @@ Hadoop MapReduce 是一个分布式计算框架，用于编写批处理应用程
 
 这里以词频统计为例进行说明，MapReduce 处理的流程如下：
 
-<div align="center"> <img width="600px" src="pictures/mapreduceProcess.png"/> </div>
+<img src="../../picture/mapreduceProcess.png"/>
 
 1. **input** : 读取文本文件，输入数据；
 
@@ -772,16 +1355,13 @@ MapReduce 编程模型中 `splitting` 和 `shuffing` 操作都是由框架实现
 (input) <k1, v1> -> map -> <k2, v2> -> combine -> <k2, v2> -> reduce -> <k3, v3> (output)
 ```
 
-
 ## 三、combiner & partitioner
 
-<div align="center"> <img width="600px" src="pictures/Detailed-Hadoop-MapReduce-Data-Flow-14.png"/> </div>
+<img src="../../picture/Detailed-Hadoop-MapReduce-Data-Flow-14.png"/>
 
 ### 3.1 InputFormat & RecordReaders 
 
 `InputFormat` 将输出文件拆分为多个 `InputSplit`，并由 `RecordReaders` 将 `InputSplit` 转换为标准的<key，value>键值对，作为 map 的输出。这一步的意义在于只有先进行逻辑拆分并转为标准的键值对格式后，才能为多个 `map` 提供输入，以便进行并行处理。
-
-
 
 ### 3.2 Combiner
 
@@ -793,13 +1373,11 @@ MapReduce 编程模型中 `splitting` 和 `shuffing` 操作都是由框架实现
 
 不使用 combiner 的情况：
 
-<div align="center"> <img  width="600px"  src="pictures/mapreduce-without-combiners.png"/> </div>
+<img src="../../picture/mapreduce-without-combiners.png"/>
 
 使用 combiner 的情况：
 
-<div align="center"> <img width="600px"  src="pictures/mapreduce-with-combiners.png"/> </div>
-
-
+<img src="../../picture/mapreduce-with-combiners.png"/> 
 
 可以看到使用 combiner 的时候，需要传输到 reducer 中的数据由 12keys，降低到 10keys。降低的幅度取决于你 keys 的重复率，下文词频统计案例会演示用 combiner 降低数百倍的传输量。
 
@@ -807,13 +1385,9 @@ MapReduce 编程模型中 `splitting` 和 `shuffing` 操作都是由框架实现
 
 `partitioner` 可以理解成分类器，将 `map` 的输出按照 key 值的不同分别分给对应的 `reducer`，支持自定义实现，下文案例会给出演示。
 
-
-
 ## 四、MapReduce初识
 
 WordCount词频统计案例
-
-> 项目代码：BigData-Learning/Hadoop/codes/MapReduce/mrpreliminary
 
 ### 4.1 项目简介
 
@@ -882,9 +1456,7 @@ public class WordCountMapper extends Mapper<LongWritable,Text,Text, IntWritable>
 
 `WordCountMapper` 对应下图的 Mapping 操作：
 
-<div align="center"> <img  src="pictures/hadoop-code-mapping.png"/> </div>
-
-
+<img  src="../../picture/hadoop-code-mapping.png"/>
 
 `WordCountMapper` 继承自 `Mappe` 类，这是一个泛型类，定义如下：
 
@@ -900,8 +1472,6 @@ public class Mapper<KEYIN, VALUEIN, KEYOUT, VALUEOUT> {
 + **VALUEIN** : `mapping` 输入 value 的类型，即每行数据；`String` 类型，对应 Hadoop 中 `Text` 类型；
 + **KEYOUT** ：`mapping` 输出的 key 的类型，即每个单词；`String` 类型，对应 Hadoop 中 `Text` 类型；
 + **VALUEOUT**：`mapping` 输出 value 的类型，即每个单词出现的次数；这里用 `int` 类型，对应 `IntWritable` 类型。
-
-
 
 ### 4.3 WordCountReducer
 
@@ -963,7 +1533,7 @@ public class WordCountReducer extends Reducer<Text, IntWritable , Text , IntWrit
 
 如下图，`shuffling` 的输出是 reduce 的输入。这里的 key 是每个单词，values 是一个可迭代的数据类型，类似 `(1,1,1,...)`。
 
-<div align="center"> <img  src="pictures/hadoop-code-reducer.png"/> </div>
+<img  src="../../picture/hadoop-code-reducer.png"/>
 
 ### 4.4 WordCountApp
 
@@ -1158,11 +1728,11 @@ job.setCombinerClass(WordCountReducer.class);
 
 没有加入 `combiner` 的打印日志：
 
-<div align="center"> <img  src="pictures/hadoop-no-combiner.png"/> </div>
+<img  src="../../picture/hadoop-no-combiner.png"/>
 
 加入 `combiner` 后的打印日志如下：
 
-<div align="center"> <img  src="pictures/hadoop-combiner.png"/> </div>
+<img  src="../../picture/hadoop-combiner.png"/>
 
 这里我们只有一个输入文件并且小于 128M，所以只有一个 Map 进行处理。可以看到经过 combiner 后，records 由 `3519` 降低为 `6`(样本中单词种类就只有 6 种)，在这个用例中 combiner 就能极大地降低需要传输的数据量。
 
@@ -1209,13 +1779,11 @@ job.setPartitionerClass(CustomPartitioner.class);
 job.setNumReduceTasks(WordCountDataUtils.WORD_LIST.size());
 ```
 
-
-
 ### 6.3  执行结果
 
 执行结果如下，分别生成 6 个文件，每个文件中为对应单词的统计结果：
 
-<div align="center"> <img  src="pictures/hadoop-wordcountcombinerpartition.png"/> </div>
+<img  src="../../picture/hadoop-wordcountcombinerpartition.png"/>
 
 
 ## 七、MapReduce实战
@@ -1370,8 +1938,6 @@ public class AccessMapper extends Mapper<LongWritable , Text , Text , Access> {
         context.write(new Text(phone),new Access(phone,up,down));
     }
 }
-
-
 ```
 
 3. Reducer阶段：
@@ -1399,8 +1965,6 @@ public class AccessReducer extends Reducer<Text,Access,Text,Access> {
         context.write(key , new Access(key.toString(),ups,downs));
     }
 }
-
-
 ```
 
 4. Driver类
@@ -1448,8 +2012,6 @@ public class AccessLocalApp {
 
 
 }
-
-
 ```
 
 5. 运行结果
@@ -1477,8 +2039,6 @@ public class AccessLocalApp {
 18211575961	Access{phone='18211575961', up=1527, down=2106, sum=3633}
 18320173382	Access{phone='18320173382', up=9531, down=2412, sum=11943}
 84138413	Access{phone='84138413', up=4116, down=1432, sum=5548}
-
-
 ```
 
 发现上面的运行结果不好看，电话号的显示重复了，而且，有Access{}的出现。对于电话号的重复问题，我们可以使用NullWritable来作为reducer阶段输出的key。而Access{}则是在Access类中，修改重写的toString方法。
@@ -1553,12 +2113,11 @@ public class AccessPartitioner extends Partitioner<Text, Access> {
 
 **Apache YARN** (Yet Another Resource Negotiator)  是 hadoop 2.0 引入的集群资源管理系统。用户可以将各种服务框架部署在 YARN 上，由 YARN 进行统一地管理和资源分配。
 
-<div align="center"> <img width="600px"  src="pictures/yarn-base.png"/> </div>
-
+<img src="../../picture/yarn-base.png"/>
 
 ## 二、YARN架构
 
-<div align="center"> <img width="600px" src="pictures/Figure3Architecture-of-YARN.png"/> </div>
+ <img src="../../picture/Figure3Architecture-of-YARN.png"/>
 
 ### 2.1 ResourceManager
 
@@ -1585,10 +2144,9 @@ public class AccessPartitioner extends Partitioner<Text, Access> {
 
 `Container` 是 YARN 中的资源抽象，它封装了某个节点上的多维度资源，如内存、CPU、磁盘、网络等。当 AM 向 RM 申请资源时，RM 为 AM 返回的资源是用 `Container` 表示的。YARN 会为每个任务分配一个 `Container`，该任务只能使用该 `Container` 中描述的资源。`ApplicationMaster` 可在 `Container` 内运行任何类型的任务。例如，`MapReduce ApplicationMaster` 请求一个容器来启动 map 或 reduce 任务，而 `Giraph ApplicationMaster` 请求一个容器来运行 Giraph 任务。
 
-
 ## 三、YARN工作原理简述
 
-<div align="center"> <img src="pictures/yarn工作原理简图.png"/> </div>
+<img src="../../picture/yarn工作原理简图.png"/>
 
 1. `Client` 提交作业到 YARN 上；
 
@@ -1597,11 +2155,9 @@ public class AccessPartitioner extends Partitioner<Text, Access> {
 3. `Application Master` 根据实际需要向 `Resource Manager` 请求更多的 `Container` 资源（如果作业很小, 应用管理器会选择在其自己的 JVM 中运行任务）；
 
 4. `Application Master` 通过获取到的 `Container` 资源执行分布式计算。
-
-   
 ## 四、YARN工作原理详述
 
-<div align="center"> <img width="600px" src="pictures/yarn工作原理.png"/> </div>
+<img src="../../picture/yarn工作原理.png"/>
 
 ### 4.1 作业提交
 
@@ -1679,7 +2235,7 @@ YARN 中的任务将其进度和状态 (包括 counter) 返回给应用管理器
 
   - 数据处理流程及其技术架构
 
-<div align="center"> <img width="600px"  src="pictures/architecture.png"/> </div>
+<img src="../../picture/architecture.png"/>
 
 ## 三、需求实现版本一
 
@@ -1986,7 +2542,6 @@ public class ProvinceStatApp {
     }
 
 }
-
 ```
 
 ### 3.3 统计页面的访问量
@@ -2020,7 +2575,6 @@ public class GetPageId {
     }
 
 }
-
 ```
 
 抽取出pageid后，创建一个PageStatApp，用来统计页面浏览量
@@ -2099,8 +2653,6 @@ public class PageStatApp {
     }
 
 }
-
-
 ```
 
 ## 四、需求实现版本二
@@ -2560,7 +3112,7 @@ hadoop jar /home/willhope/JetBrain/DevFile/com.zyx.bigdata/target/com.zyx.bigdat
 
 ## 一、Hive产生的背景
 
-使用MR进行WordCount统计，需要编写大量的代码，要分别实现map，reduce，driver三大类，并且，在生产环境中运行时，需要将开发项目编译，打包，上传数据到HDFS等等��作，会非常的繁琐，开发过程无法快速应对业务需求的变化。
+使用MR进行WordCount统计，需要编写大量的代码，要分别实现map，reduce，driver三大类，并且，在生产环境中运行时，需要将开发项目编译，打包，上传数据到HDFS等等，会非常的繁琐，开发过程无法快速应对业务需求的变化。
 
 因而Hive应运而生，由Facebook开源的，可以**离线批处理**解决海量结构化日志的数据统计问题，是构建在Hadoop之上的数据仓库，可对大数据进行读写。Hive使用类似SQL的写法HQL，可以使关系型数据库的开发人员很容易操作，但Hive的底层支持多种不同的执行引擎，**在1.x时支持MR，在2.x时支持Spark**，此外还可以支持Tez。
 
@@ -2575,7 +3127,7 @@ hadoop jar /home/willhope/JetBrain/DevFile/com.zyx.bigdata/target/com.zyx.bigdat
 
 ## 三、Hive部署架构
 
-<div align="center"> <img width="600px"  src="pictures/hive-architecture.png"/> </div>
+<img src="../../picture/hive-architecture.png"/>
 
 
 ## 四、Hive和关系型数据库的区别
@@ -2894,9 +3446,7 @@ select province,count(*) as cnt from trackinfo where day='2013-07-21' group by p
 # sqoop help
 ```
 
-<div align="center"> <img  src="pictures/sqoop-help.png"/> </div>
-
-<br/>
+<img  src="../../picture/sqoop-help.png"/>
 
 ### 1.2 查看某条命令的具体使用方法
 
@@ -2918,9 +3468,7 @@ sqoop list-databases \
 --password 123456
 ```
 
-<div align="center"> <img  src="pictures/sqoop-list-databases.png"/> </div>
-
-<br/>
+<img  src="../../picture/sqoop-list-databases.png"/> 
 
 ### 2. 查询指定数据库中所有数据表
 
@@ -2930,8 +3478,6 @@ sqoop list-tables \
 --username root \
 --password 123456
 ```
-
-
 
 ## 三、Sqoop 与 HDFS
 
@@ -2958,10 +3504,10 @@ sqoop import \
 日志输出如下，可以看到输入数据被平均 `split` 为三份，分别由三个 `map task` 进行处理。数据默认以表的主键列作为拆分依据，如果你的表没有主键，有以下两种方案：
 
 + 添加 `-- 
-reset-to-one-mapper` 参数，代表只启动一个 `map task`，即不并行执行；
+  reset-to-one-mapper` 参数，代表只启动一个 `map task`，即不并行执行；
 + 若仍希望并行执行，则可以使用 `--split-by <column-name>` 指明拆分数据的参考列。
 
-<div align="center"> <img  src="pictures/sqoop-map-task.png"/> </div>
+<img  src="../../picture/sqoop-map-task.png"/>
 
 #### 2. 导入验证
 
@@ -2974,9 +3520,7 @@ hadoop fs -text  /sqoop/part-m-00000
 
 查看 HDFS 导入目录,可以看到表中数据被分为 3 部分进行存储，这是由指定的并行度决定的。
 
-<div align="center"> <img  src="pictures/sqoop_hdfs_ls.png"/> </div>
-
-<br/>
+<img  src="../../picture/sqoop_hdfs_ls.png"/>
 
 ### 3.2 HDFS数据导出到MySQL
 
@@ -2996,8 +3540,6 @@ sqoop export  \
 ```sql
 CREATE TABLE help_keyword_from_hdfs LIKE help_keyword ;
 ```
-
-
 
 ## 四、Sqoop 与 Hive
 
@@ -3039,13 +3581,11 @@ sqoop import \
  hive> SELECT * FROM sqoop_test.help_keyword;
 ```
 
-<div align="center"> <img  src="pictures/sqoop_hive_tables.png"/> </div>
+<img  src="../../picture/sqoop_hive_tables.png"/>
 
 #### 3. 可能出现的问题
 
-<div align="center"> <img  src="pictures/sqoop_hive_error.png"/> </div>
-
-<br/>
+<img  src="../../picture/sqoop_hive_error.png"/> 
 
 如果执行报错 `java.io.IOException: java.lang.ClassNotFoundException: org.apache.hadoop.hive.conf.HiveConf`，则需将 Hive 安装目录下 `lib` 下的 `hive-exec-**.jar` 放到 sqoop 的 `lib` 。
 
@@ -3054,8 +3594,6 @@ sqoop import \
 -rw-r--r--. 1 1106 4001 19632031 11 月 13 21:45 hive-exec-1.1.0-cdh5.15.2.jar
 [root@hadoop001 lib]# cp hive-exec-1.1.0-cdh5.15.2.jar  ${SQOOP_HOME}/lib
 ```
-
-<br/>
 
 ### 4.2 Hive 导出数据到MySQL
 
@@ -3072,11 +3610,11 @@ hive> desc formatted help_keyword;
 
 `Location` 属性为其存储位置：
 
-<div align="center"> <img  src="pictures/sqoop-hive-location.png"/> </div>
+<img  src="../../picture/sqoop-hive-location.png"/>
 
 这里可以查看一下这个目录，文件结构如下：
 
-<div align="center"> <img  src="pictures/sqoop-hive-hdfs.png"/> </div>
+<img  src="../../picture/sqoop-hive-hdfs.png"/>
 
 #### 3.2 执行导出命令
 
@@ -3095,8 +3633,6 @@ MySQL 中的表需要预先创建：
 ```sql
 CREATE TABLE help_keyword_from_hive LIKE help_keyword ;
 ```
-
-
 
 ## 五、Sqoop 与 HBase
 
@@ -3134,11 +3670,7 @@ hbase> desc 'help_keyword_hbase'
 
 使用 `scan` 查看表数据：
 
-<div align="center"> <img  src="pictures/sqoop_hbase.png"/> </div>
-
-
-
-
+<img  src="../../picture/sqoop_hbase.png"/>
 
 ## 六、全库导出
 
@@ -3177,8 +3709,6 @@ sqoop import-all-tables -Dorg.apache.sqoop.splitter.allow_text_splitter=true \
   -m 3
 ```
 
-
-
 ## 七、Sqoop 数据过滤
 
 ### 7.1 query参数
@@ -3208,7 +3738,6 @@ sqoop import \
 reset-to-one-mapper`，则需要用 ` --split-by ` 指明参考列；
 + SQL 的 `where` 字句必须包含 `$CONDITIONS`，这是固定写法，作用是动态替换。
 
-  
 
 ### 7.2 增量导入
 
@@ -3233,8 +3762,6 @@ sqoop import \
 + **lastmodified**：要求参考列的值必须是 `timestamp` 类型，且插入数据时候要在参考列插入当前时间戳，更新数据时也要更新参考列的时间戳，所有时间晚于 ``last-value`` 的数据都会被导入。
 
 通过上面的解释我们可以看出来，其实 Sqoop 的增量导入并没有太多神器的地方，就是依靠维护的参考列来判断哪些是增量数据。当然我们也可以使用上面介绍的 `query` 参数来进行手动的增量导出，这样反而更加灵活。
-
-
 
 ## 八、类型支持
 

@@ -46,7 +46,7 @@ SparkML：机器学习 API
 
 Spark Graphx：图形计算
 
-<div align="center"> <img  width="600px" src="pictures/spark-stack.png"/> </div>
+<img src="../../picture/spark-stack.png"/>
 
 ## 四、Spark和Hadoop的对比
 
@@ -64,14 +64,14 @@ Spark 是在借鉴了 MapReduce 之上发展而来的，继承了其分布式并
 
 总结：
 
-  1. Spark 是 MapReduce 的替代方案，而且兼容 HDFS、Hive，可融入 Hadoop 的生态系统，以弥补 MapReduce 的不足。
-  2. 使用先进的 DAG 调度程序，查询优化器和物理执行引擎，以实现性能上的保证；
-  3. 多语言支持，目前支持的有 Java，Scala，Python 和 R,提供了 80 多个高级 API，可以轻松地构建应用程序；
-  4. 支持批处理，流处理和复杂的业务分析；丰富的类库支持：包括 SQL，MLlib，GraphX 和 Spark Streaming 等库，并且可以将它们无缝地进行组合；
-  5. 丰富的部署模式：支持本地模式和自带的集群模式，也支持在 Hadoop，Mesos，Kubernetes 上运行；
-  6. 多数据源支持：支持访问 HDFS，Alluxio，Cassandra，HBase，Hive 以及数百个其他数据源中的数据
+    1. Spark 是 MapReduce 的替代方案，而且兼容 HDFS、Hive，可融入 Hadoop 的生态系统，以弥补 MapReduce 的不足。
+    2. 使用先进的 DAG 调度程序，查询优化器和物理执行引擎，以实现性能上的保证；
+    3. 多语言支持，目前支持的有 Java，Scala，Python 和 R,提供了 80 多个高级 API，可以轻松地构建应用程序；
+    4. 支持批处理，流处理和复杂的业务分析；丰富的类库支持：包括 SQL，MLlib，GraphX 和 Spark Streaming 等库，并且可以将它们无缝地进行组合；
+    5. 丰富的部署模式：支持本地模式和自带的集群模式，也支持在 Hadoop，Mesos，Kubernetes 上运行；
+    6. 多数据源支持：支持访问 HDFS，Alluxio，Cassandra，HBase，Hive 以及数百个其他数据源中的数据
 
-<div align="center"> <img width="600px" src="pictures/future-of-spark.png"/> </div>
+<img src="../../picture/future-of-spark.png"/>
 
 
 ## 五、集群架构
@@ -85,7 +85,7 @@ Spark 是在借鉴了 MapReduce 之上发展而来的，继承了其分布式并
 | Executor        | 位于工作节点上的应用进程，负责执行计算任务并且将输出数据保存到内存或者磁盘中 |
 | Task            | 被发送到 Executor 中的工作单元                               |
 
-<div align="center"> <img src="pictures/spark-集群模式.png"/> </div>
+<img src="../../picture/spark-集群模式.png"/>
 
 **执行过程**：
 
@@ -120,7 +120,7 @@ Spark SQL 主要用于结构化数据的处理。其具有以下特点：
 - 支持标准的 JDBC 和 ODBC 连接；
 - 支持优化器，列式存储和代码生成等特性，以提高查询效率。
 
-<div align="center"> <img src="pictures/sql-hive-arch.png"/> </div>
+<img src="../../picture/sql-hive-arch.png"/>
 
 
 ## 三、Spark SQL操作数据
@@ -722,7 +722,7 @@ val dataRDD = sc.parallelize(data,2)
 
 执行结果如下：
 
-<div align="center"> <img src="pictures/scala-分区数.png"/> </div>
+<img src="../../picture/scala-分区数.png"/>
 
 #### 2. 引用外部存储系统中的数据集
 
@@ -772,15 +772,15 @@ Spark 速度非常快的一个原因是 RDD 支持缓存。成功缓存后，如
 
 Spark 支持多种缓存级别 ：
 
-| Storage Level<br/>（存储级别）                 | Meaning（含义）                                              |
-| ---------------------------------------------- | ------------------------------------------------------------ |
-| `MEMORY_ONLY`                                  | 默认的缓存级别，将 RDD 以反序列化的 Java 对象的形式存储在 JVM 中。如果内存空间不够，则部分分区数据将不再缓存。 |
-| `MEMORY_AND_DISK`                              | 将 RDD 以反序列化的 Java 对象的形式存储 JVM 中。如果内存空间不够，将未缓存的分区数据存储到磁盘，在需要使用这些分区时从磁盘读取。 |
-| `MEMORY_ONLY_SER`<br/>                         | 将 RDD 以序列化的 Java 对象的形式进行存储（每个分区为一个 byte 数组）。这种方式比反序列化对象节省存储空间，但在读取时会增加 CPU 的计算负担。仅支持 Java 和 Scala 。 |
-| `MEMORY_AND_DISK_SER`<br/>                     | 类似于 `MEMORY_ONLY_SER`，但是溢出的分区数据会存储到磁盘，而不是在用到它们时重新计算。仅支持 Java 和 Scala。 |
-| `DISK_ONLY`                                    | 只在磁盘上缓存 RDD                                           |
-| `MEMORY_ONLY_2`, <br/>`MEMORY_AND_DISK_2`, etc | 与上面的对应级别功能相同，但是会为每个分区在集群中的两个节点上建立副本。 |
-| `OFF_HEAP`                                     | 与 `MEMORY_ONLY_SER` 类似，但将数据存储在堆外内存中。这需要启用堆外内存。 |
+| Storage Level（存储级别）                | Meaning（含义）                                              |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `MEMORY_ONLY`                            | 默认的缓存级别，将 RDD 以反序列化的 Java 对象的形式存储在 JVM 中。如果内存空间不够，则部分分区数据将不再缓存。 |
+| `MEMORY_AND_DISK`                        | 将 RDD 以反序列化的 Java 对象的形式存储 JVM 中。如果内存空间不够，将未缓存的分区数据存储到磁盘，在需要使用这些分区时从磁盘读取。 |
+| `MEMORY_ONLY_SER`                        | 将 RDD 以序列化的 Java 对象的形式进行存储（每个分区为一个 byte 数组）。这种方式比反序列化对象节省存储空间，但在读取时会增加 CPU 的计算负担。仅支持 Java 和 Scala 。 |
+| `MEMORY_AND_DISK_SER`                    | 类似于 `MEMORY_ONLY_SER`，但是溢出的分区数据会存储到磁盘，而不是在用到它们时重新计算。仅支持 Java 和 Scala。 |
+| `DISK_ONLY`                              | 只在磁盘上缓存 RDD                                           |
+| `MEMORY_ONLY_2`,`MEMORY_AND_DISK_2`, etc | 与上面的对应级别功能相同，但是会为每个分区在集群中的两个节点上建立副本。 |
+| `OFF_HEAP`                               | 与 `MEMORY_ONLY_SER` 类似，但将数据存储在堆外内存中。这需要启用堆外内存。 |
 
 > 启动堆外内存需要配置两个参数：
 >
@@ -808,7 +808,7 @@ Spark 会自动监视每个节点上的缓存使用情况，并按照最近最�
 
 在 Spark 中，一个任务对应一个分区，通常不会跨分区操作数据。但如果遇到 `reduceByKey` 等操作，Spark 必须从所有分区读取数据，并查找所有键的所有值，然后汇总在一起以计算每个键的最终结果 ，这称为 `Shuffle`。
 
-<div align="center"> <img width="600px" src="pictures/spark-reducebykey.png"/> </div>
+<img src="../../picture/spark-reducebykey.png"/> 
 
 
 #### 2. Shuffle的影响
@@ -833,7 +833,7 @@ RDD 和它的父 RDD(s) 之间的依赖关系分为两种不同的类型：
 
 如下图，每一个方框表示一个 RDD，带有颜色的矩形表示分区：
 
-<div align="center"> <img width="600px" src="pictures/spark-窄依赖和宽依赖.png"/> </div>
+<img src="../../picture/spark-窄依赖和宽依赖.png"/>
 
 区分这两种依赖是非常有用的：
 
@@ -847,7 +847,7 @@ RDD(s) 及其之间的依赖关系组成了 DAG(有向无环图)，DAG 定义了
 + 对于窄依赖，由于分区的依赖关系是确定的，其转换操作可以在同一个线程执行，所以可以划分到同一个执行阶段；
 + 对于宽依赖，由于 Shuffle 的存在，只能在父 RDD(s) 被 Shuffle 处理完成后，才能开始接下来的计算，因此遇到宽依赖就需要重新划分阶段。
 
-<div align="center"> <img width="600px" height="600px" src="pictures/spark-DAG.png"/> </div>
+<img height="600px" src="../../picture/spark-DAG.png"/>
 
 
 ## 五、DataFrame & Dataset
@@ -887,7 +887,7 @@ DataFrame是命名列构成的分布式数据集合。 它在概念上类似于�
 
 Dataset是DataFrame API的扩展，提供RDD API的类型安全，面向对象的编程接口以及Catalyst查询优化器的性能优势和DataFrame API的堆外存储机制的功能。
 
-<div align="center"> <img src="pictures/spark-dataFrame+RDDs.png"/> </div>
+<img src="../../picture/spark-dataFrame+RDDs.png"/> 
 
 #### 3. 数据格式
 
@@ -915,11 +915,11 @@ DataSet可以在编译时检查类型, 它提供编译时类型安全性。
 
 以上这些最终都被解释成关于类型安全图谱，对应开发中的语法和分析错误。在图谱中，Dataset 最严格，但对于开发者来说效率最高。
 
-<div align="center"> <img  width="600px"  src="pictures/spark-运行安全.png"/> </div>
+<img src="../../picture/spark-运行安全.png"/>
 
 上面的描述可能并没有那么直观，下面的给出一个 IDEA 中代码编译的示例：
 
-<div align="center"> <img src="pictures/spark-运行时类型安全.png"/> </div>
+<img src="../../picture/spark-运行时类型安全.png"/> 
 
 这里一个可能的疑惑是 DataFrame 明明是有确定的 Scheme 结构 (即列名、列字段类型都是已知的)，但是为什么还是无法对列名进行推断和错误判断，这是因为 DataFrame 是 Untyped 的。
 
@@ -986,7 +986,7 @@ Dataset中，对大量数据集执行聚合操作的速度更快。
 + 我们可以使用DataFrame和Dataset 中的高级的方法。 例如，filter, maps, aggregation, sum, SQL queries以及通过列访问数据等，如果您不关心在按名称或列处理或访问数据属性时强加架构（例如列式格式）。
 + 如果我们想要在编译时更高程度的类型安全性。RDD提供更底层功能， DataFrame和Dataset则允许创建一些自定义的结构，拥有高级的特定操作，节省空间并高速执行。为了确保我们的代码能够尽可能的利用Tungsten优化带来的好处，推荐使用Scala的 Dataset API（而不是RDD API）。Dataset即拥有DataFrame带来的relational transformation的便捷，也拥有RDD中的functional transformation的优势。
 
-<div align="center"> <img  width="600px"  src="pictures/spark-structure-api.png"/> </div>
+<img src="../../picture/spark-structure-api.png"/> 
 
 ## 六、DataFrame API操作初识
 
@@ -1102,8 +1102,6 @@ public class DataFrameJ {
     }
 
 }
-
-
 ```
 
 ### 6.2 DataFrame与RDD之间的相互操作
@@ -1163,8 +1161,6 @@ object DataFrameRDDReflection {
   case class Info(id:Int , name:String , age:Int)
 
 }
-
-
 ```
 
 java版本：
@@ -1270,7 +1266,6 @@ public class DataFrameRDDReflection {
     }
 
 }
-
 ```
 
 #### 2. 操作方式二——编程方式
@@ -1322,7 +1317,6 @@ object DataFrameRDDProgram {
   }
 
 }
-
 ```
 
 java版本：
@@ -1389,9 +1383,7 @@ public class DataFrameRDDProgram {
 
       //关闭资源
       sparkSession.stop();
-
   }
-
 }
 
 ```
@@ -1466,13 +1458,9 @@ object DataFrameCase {
     //在内联结的时候，等于号必须写3个
     studentDF.join(studentDF2 , studentDF.col("id") === studentDF2.col("id")).show()
 
-
     spark.stop()
-
   }
-
   case class Student(id : Int , name : String , phone : String , email : String)
-
 }
 
 ```
@@ -1648,8 +1636,6 @@ public class Sales {
         this.amountPaid = amountPaid;
     }
 }
-
-
 ```
 
 其次，我们将文件进行解析。
@@ -1690,7 +1676,6 @@ public class DataSetApp2 {
     }
 
 }
-
 ```
 
 ## 八、External data source
@@ -1748,7 +1733,6 @@ object ParquetApp {
   }
 
 }
-
 ```
 
 java版本：
@@ -2054,7 +2038,8 @@ Flume：web日志写入到HDFS
 通过图形化展示的方式展现出来：饼图、柱状图、地图、折线图  ECharts、HUE、Zeppelin（后两个一般是大数据开发人员使用的）
 
 **离线数据处理架构**
-<div align="center"> <img  src="pictures/Data-processing-architecture.png"/> </div>
+
+<img  src="../../picture/Data-processing-architecture.png"/>
 
 ### 1.3 项目需求
 
@@ -3830,18 +3815,3 @@ Spark Streaming 的源码托管在github上，在项目中有一个examples目�
     ssc.awaitTermination()
 ```
 
-### 4.4 Spark Streaming核心实战案例
-
-#### 1. SparkStreaming 处理 socket数据
-
-
-
-#### 2. 
-## 五、Spark Streaming集成Kafka
-
-## 六、Spark Streaming集成Kafka和Flume
-
-
-# 第五部分——SparkStreaming 实战
-
-## 一、使用Python进行日志的生产

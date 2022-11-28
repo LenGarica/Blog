@@ -1,17 +1,193 @@
-# Ubuntu系统环境搭建
+# CentOS系统环境搭建
 
-## 一、软件环境变量配置
+## 一、环境说明
+
+大数据软件的搭建，全部做成分布式集群模式，使用虚拟机CentOS(最小安装)搭建，并且每个虚拟机直接使用root用户，不设置其他用户权限。
+
+CentOS版本为7.5，共5台，每台的网络地址和内存网盘使用情况如下表配置：
+
+| 名称      | 网关          | ip地址          | 内存 | 硬盘 | 职责 |
+| --------- | ------------- | --------------- | ---- | ---- | ---- |
+| hadoop001 | 192.168.114.2 | 192.168.114.101 | 4G   | 50G  | 主机 |
+| hadoop002 | 192.168.114.2 | 192.168.114.102 | 4G   | 50G  | 从机 |
+| hadoop003 | 192.168.114.2 | 192.168.114.103 | 4G   | 50G  | 从机 |
+
+## 二、虚拟机网络配置
+
+成功安装虚拟机并且打开后，首先需要配置网络，这里详细介绍以下配置网络的过程。这里只举一个例子，其他两个机器，操作与下面命令一致。
+
+1. 修改机器名
+
+```bash
+# 查看机器名
+cat /etc/hostname
+# 修改每台机器名称为设定的名称，使用下面命令，删除文件内容，填写设定的机器名
+vim /etc/hostname
+```
+
+2. 修改地址与机器名映射
+
+```bash
+vim /etc/hosts
+//添加以下内容
+192.168.114.101	hadoop001
+192.168.114.102	hadoop002	
+192.168.114.103	hadoop003	
+```
+
+3. 设置网络信息
+
+```bash
+vi  /etc/sysconfig/network-scripts/ifcfg-ens33 
+//添加以下内容
+TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=static
+DEEROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=ens33
+#删除UUID,防止克隆时出现两台机器的唯一标识是一样的
+DEVICE=ens33
+ONBOOT=yes
+#ip
+IPADDR=192.168.114.101
+#网关
+GATEWAY=192.168.114.2
+#子网掩码
+NETMASK=255.255.255.0
+#使用主的DNS
+DNS1=114.114.114.114
+#备用的DNS
+DNS2=8.8.8.8
+
+// 保存后，重启网卡
+systemctl restart network.service
+```
+
+4. 关闭防火墙
+
+```bash
+systemctl stop firewalld
+systemctl disable firewalld
+```
+
+5. 安装vim并设置
+
+```bash
+yum install -y vim*
+
+// 配置vim
+vim /etc/vimrc
+set nu          // 设置显示行号
+set showmode    // 设置在命令行界面最下面显示当前模式等
+set ruler       // 在右下角显示光标所在的行数等信息
+set autoindent  // 设置每次单击Enter键后，光标移动到下一行时与上一行的起始字符对齐
+set tabstop     // tab4个空格
+set cursorline  // 当前行高亮	
+syntax on       // 即设置语法检测，当编辑C或者Shell脚本时，关键字会用特殊颜色显示
+```
+
+6. 安装openssh和git
+
+```bash
+yum install -y openssh-server
+yum install -y git
+// 创建公钥密钥
+ssh-keygen -t rsa
+// 一路回车之后，会创建一个.ssh文件夹，里面有三个文件，分别是公钥、密钥等
+// 设置免密登录
+cd .ssh
+cat id_rsa.pub >> authorized_keys
+// 在hadoop001上，操作下面
+ssh-copy-id -i ~/.ssh/id_rsa.pub hadoop001
+ssh-copy-id -i ~/.ssh/id_rsa.pub hadoop002
+ssh-copy-id -i ~/.ssh/id_rsa.pub hadoop003
+```
+
+7. 安装JDK
+
+```bash
+# 解压jdk，并将其配置到环境变量中
+# Java env
+export JAVA_HOME=/root/app/jdk1.8.0_211
+export JRE_HOME=$JAVA_HOME/jre
+export CLASSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib
+export PATH=${JAVA_HOME}/bin:${JRE_HOME}/bin:$PATH
+```
+
+8.安装hadoop集群
+
+```bash
+# 解压hadoop安装包，并将其配置到环境变量中
+# hadoop env
+export HADOOP_HOME=/root/app/hadoop
+export PATH=$HADOOP_HOME/bin:$PATH
+export PATH=$HADOOP_HOME/sbin:$PATH
+
+# vi core-site.xml添加如下配置
+<configuration> 
+    <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://hadoop001:8020</value>
+    </property>
+</configuration>
+
+# vi hdfs-site.xml
+<configuration> 
+    <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>/root/app/hadoop/data/dfs/name</value>
+    </property>
+
+    <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>/root/app/hadoop/data/dfs/data</value>
+    </property>
+</configuration>
+
+
+# vi mapred-site.xml
+<configuration>
+	<property>
+		<name>mapreduce.framework.name</name>
+		<value>yarn</value>
+	</property>
+</configuration>
+
+# vi yarn-site.xml
+<configuration>
+    <property>
+    	<name>yarn.nodemanager.aux-services</name>
+    <value>mapreduce_shuffle</value>
+	</property>
+
+    <property>
+    	<name>yarn.nodemanager.local-dirs</name>
+    	<value>/root/app/hadoop/data/nm-local-dir</value>
+    </property>
+
+</configuration>
+   
+# vi slaves
+hadoop001
+hadoop002
+hadoop003
+```
+
+
+
+## 三、软件环境变量配置
 
 ```bash
 # node js
 export NODE_HOME=/home/tony/app/node-v14.16.1-linux-x64/bin
 export PATH=$NODE_HOME:$PATH
-
-# java env 
-export JAVA_HOME=/home/tony/app/jdk1.8.0_291
-export JRE_HOME=$JAVA_HOME/jre
-export CLASSPATH=.:${JAVA_HOME}/lib:${JRE_HOME}/lib
-export PATH=${JAVA_HOME}/bin:${JRE_HOME}/bin:$PATH
 
 # maven env
 export MAVEN_HOME=/home/tony/app/apache-maven-3.6.3-bin/apache-maven-3.6.3
@@ -20,10 +196,6 @@ export PATH=$MAVEN_HOME/bin:$PATH
 # scala env
 export SCALA_HOME=/home/tony/app/scala-2.11.12
 export PATH=$SCALA_HOME/bin:$PATH
-
-# hadoop env
-export HADOOP_HOME=/home/tony/app/hadoop-2.6.0-cdh5.15.1
-export PATH=$HADOOP_HOME/bin:$PATH
 
 # hive env
 export HIVE_HOME=/home/tony/app/hive-1.1.0-cdh5.15.1
@@ -58,7 +230,6 @@ export PATH=$FLUME_HOME/bin:$PATH
 export FLINK_HOME=/home/tony/app/flink-1.7.0
 export PATH=$FLINK_HOME/bin:$PATH
 
-
 # kibana env
 export LIBANA_HOME=/home/tony/kibana-6.8.12-linux-x86_64
 export PATH=$KIBANA_HOME/bin:$PATH
@@ -71,148 +242,6 @@ export PATH=$ELASTIC_HOME/bin:$PATH
 export GO_HOME=/home/tony/app/go
 export PATH=$GO_HOME/bin:$PATH
 ```
-
-
-## 二、Hadoop安装
-
-使用的是CDH版本，下载地址archive.cloudera.com/cdh5/cdh/5
-1. 打开终端，创建几个文件夹mkdir software (存放软件安装包), app （存放软件安装目录）, data （存放要使用的数据）, lib　（存放开发的jar包) ,shell (存放相关脚本),maven仓库存放在默认的.m2下面，也可以自行更改
-
-2. uname -a 查看自己电脑的用户名，或者打开终端后，用户名字@后面的字就是用户名
-
-3. vi /etc/hosts  查看自己电脑的ip与名字的映射，记住自己用户名映射的ip地址。
-
-4. 本项目使用的是CDH版本是hadoop-2.6.0-cdh5.15.1，往后hive,hbase等版本也要与cdh5.15.1此版本相同。可以在终端直接使用wegt http://archive.cloudera.com/cdh5/cdh/5/hadoop-2.6.0-cdh5.15.1.tar.gz
-
-5. 文档：http://archive.cloudera.com/cdh5/cdh/5/hadoop-2.6.0-cdh5.15.1/
-
-6. Java安装看上面
-
-7. ssh的安装：在root权限下输入：apt install openssh-server；service sshd restart；ssh-keygen -t rsa；cd .ssh ; ls 后会发现多了三个文件id_rsa,id_rsa.pub,known_hosts；cat id_rsa.pub >> authorized_keys;chmod 600 authorized_keys；ssh　自己电脑的用户名，如果没有输密码，则正确。
-
-8. 将下载的cdh包解压到app文件夹中，hadoop目录常见说明，bin:存放hadoop命令，etc：存放hadoop的相关配置，sbin：存放hadoop相关进程的脚本，examples：存放一些简单的案例,share:存放一些例子的jar包。
-
-9. cd app/hadoop-2.6.0-cdh5.15.1/etc/hadoop，进入到此目录中进行相关的配置
-
-10. vi hadoop-env.sh进入到hadoop环境的配置，将java环境配置到这个文件中，因为hadoop环境是默认，因此不用配置
-
-11. vi core-site.xml添加如下配置
-    
-    ````xml
-    <configuration> 
-          <property>
-              <name>fs.defaultFS</name>
-              <value>hdfs://willhope-pc:8020</value>
-         </property>
-    </configuration>
-    ````
-    
-12. vi hdfs-site.xml
-    
-    ````xml
-    <configuration> 
-         <property>
-             <name>dfs.replication</name>
-             <value>1</value>
-         </property>
-    
-         <property>
-             <name>hadoop.tmp.dir</name>
-             <value>/home/willhope/app/tmp</value>
-         </property>
-    </configuration>
-    ````
-
-13. vi mapred-site.xml
-
-    ```xml
-    <configuration>
-        <property>
-            <name>mapreduce.framework.name</name>
-            <value>yarn</value>
-        </property>
-    </configuration>
-
-    ```
-
-14. vi yarn-site.xml
-
-    ```xml
-    <configuration>
-        <property>
-            <name>yarn.nodemanager.aux-services</name>
-            <value>mapreduce_shuffle</value>
-        </property>
-    
-        <property>
-            <name>yarn.nodemanager.local-dirs</name>
-            <value>/home/willhope/app/tmp/nm-local-dir</value>
-        </property>
-    
-    </configuration>
-    
-    ```
-
-
-15. vi slaves;　　　　　将里面的localhost改成电脑的用户名，如果是单机linux而非虚拟机，则可以不用更改
-    
-16. 重新开一个终端，sudo vi /etc/profile ; 添加hadoop环境到系统环境中　export HADOOP_HOME=/home/willhope/app/hadoop-2.6.0-cdh5.15.1;export PATH=$HADOOP_HOME/bin:$PATH; 保存后，source /etc/profile
-    
-17. 启动HDFS，第一次执行的时候一定要格式化文件系统，不要重复执行,cd $HADOOP_HOME/bin ; hdsf namenode -format
-    
-18. 启动集群: cd .. ; cd sbin/;  ./start-dfs.sh;结束后，jps查看当前是否启动成功，如果出现DataNode,NameNode,SecondaryNameNode则成功。如果以后使用jps，只要保证DataNode,NameNode存在就行。
-    
-19. 在浏览器中输入自己用户名映射的ip地址:50070。例如,我这里就是`http://127.0.0.1:50070`如果出现界面，表明成功。如果jps出现，但是浏览器没出现，请关闭防火墙，然后在输入地址。
-    
-20. 如果要停止hdfs，则在hadoop的sbin目录下输入./stop-dfs.sh；要单一启动或关闭，hadoop-daemons.sh start/stop NameNode/DataNode/SecondaryNameNode ;
-    
-21. HDFS的操作跟shell的操作一致，在hadoop目录下进行操作，前缀hadoop fs 加上下面的各类操作，常用的-put（将文件上传）,-ls（显示当前仓库中有哪些文件），-cat（查看文件），-mkdir（创建一个文件夹），-get（从hdfs上获得一份文件到本地），-mv（移动某个文件到某个位置），-cp（将一个文件拷贝一份），-getmerge（将两个文件合并起来），-rm（删除一个文件），-rmdir（删除一个为空的文件夹），-rmr(此命令相当于-rm -r，删除一个文件夹),-text(查看某个文件),-R(递归显示某个文件夹中的文件)
-    
-22. 上传一个本地文件到hdfs后，可以使用Hadoop fs -du -s -h /project/文件，可以查看文件的具体大小。
-    
-    ```bash
-       Usage: hadoop fs [generic options]
-            [-appendToFile <localsrc> ... <dst>]
-            [-cat [-ignoreCrc] <src> ...]
-            [-checksum <src> ...]
-            [-chgrp [-R] GROUP PATH...]
-            [-chmod [-R] <MODE[,MODE]... | OCTALMODE> PATH...]
-            [-chown [-R] [OWNER][:[GROUP]] PATH...]
-            [-copyFromLocal [-f] [-p] [-l] <localsrc> ... <dst>]
-            [-copyToLocal [-p] [-ignoreCrc] [-crc] <src> ... <localdst>]
-            [-count [-q] [-h] [-v] [-x] <path> ...]
-            [-cp [-f] [-p | -p[topax]] <src> ... <dst>]
-            [-createSnapshot <snapshotDir> [<snapshotName>]]
-            [-deleteSnapshot <snapshotDir> <snapshotName>]
-            [-df [-h] [<path> ...]]
-            [-du [-s] [-h] [-x] <path> ...]
-            [-expunge]
-            [-find <path> ... <expression> ...]
-            [-get [-p] [-ignoreCrc] [-crc] <src> ... <localdst>]
-            [-getfacl [-R] <path>]
-            [-getfattr [-R] {-n name | -d} [-e en] <path>]
-            [-getmerge [-nl] <src> <localdst>]
-            [-help [cmd ...]]
-            [-ls [-C] [-d] [-h] [-q] [-R] [-t] [-S] [-r] [-u] [<path> ...]]
-            [-mkdir [-p] <path> ...]
-            [-moveFromLocal <localsrc> ... <dst>]
-            [-moveToLocal <src> <localdst>]
-            [-mv <src> ... <dst>]
-            [-put [-f] [-p] [-l] <localsrc> ... <dst>]
-            [-renameSnapshot <snapshotDir> <oldName> <newName>]
-            [-rm [-f] [-r|-R] [-skipTrash] <src> ...]
-            [-rmdir [--ignore-fail-on-non-empty] <dir> ...]
-            [-setfacl [-R] [{-b|-k} {-m|-x <acl_spec>} <path>]|[--set <acl_spec> <path>]]
-            [-setfattr {-n name [-v value] | -x name} <path>]
-            [-setrep [-R] [-w] <rep> <path> ...]
-            [-stat [format] <path> ...]
-            [-tail [-f] <file>]
-            [-test -[defsz] <path>]
-            [-text [-ignoreCrc] <src> ...]
-            [-touchz <path> ...]
-            [-usage [cmd ...]]
-    ```
-    
 
 ## 三、Hive部署
 
