@@ -307,7 +307,7 @@ Sqoop 是一个常用的数据迁移工具，主要用于在不同存储系统�
 
 其原理是将执行命令转化成 MapReduce 作业来实现数据的迁移，如下图：
 
-<div align="center"> <img  src="/pictures/sqoop-tool.png"/> </div>
+ <img  src="../picture/sqoop-tool.png"/>
 
 #### 2.安装
 

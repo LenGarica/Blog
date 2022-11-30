@@ -164,16 +164,16 @@ hdfs  dfsadmin  -safemode  leave #离开安全模式
 所有的元数据信息都保存在了FsImage与Eidts文件当中，这两个文件就记录了所有的数据的元数据信息，元数据信息的保存目录配置在了 **hdfs-site.xml** 当中
 
 ```xml
-		<!--fsimage文件存储的路径-->
-		<property>
-                <name>dfs.namenode.name.dir</name>
-                <value>file:///opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/namenodeDatas</value>
-        </property>
-        <!-- edits文件存储的路径 -->
-		<property>
-                <name>dfs.namenode.edits.dir</name>
-                <value>file:///opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/dfs/nn/edits</value>
-  		</property>
+<!--fsimage文件存储的路径-->
+<property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file:///opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/namenodeDatas</value>
+</property>
+<!-- edits文件存储的路径 -->
+<property>
+    <name>dfs.namenode.edits.dir</name>
+    <value>file:///opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/dfs/nn/edits</value>
+</property>
 ```
 
 客户端对hdfs进行写文件时会首先被记录在edits文件中。edits修改时元数据也会更新。每次hdfs更新时edits先更新后客户端才会看到最新信息。
@@ -359,15 +359,15 @@ datanode进程死亡或者网络故障造成datanode无法与namenode通信，na
 在/opt/hadoop-2.6.0-cdh5.14.0/hadoopDatas/datanodeDatas/current这个目录下查看版本号
 
 ```shell
-    cat VERSION 
-    
-    #Thu Mar 14 07:58:46 CST 2019
-    storageID=DS-47bcc6d5-c9b7-4c88-9cc8-6154b8a2bf39
-    clusterID=CID-dac2e9fa-65d2-4963-a7b5-bb4d0280d3f4
-    cTime=0
-    datanodeUuid=c44514a0-9ed6-4642-b3a8-5af79f03d7a4
-    storageType=DATA_NODE
-    layoutVersion=-56
+cat VERSION 
+
+#Thu Mar 14 07:58:46 CST 2019
+storageID=DS-47bcc6d5-c9b7-4c88-9cc8-6154b8a2bf39
+clusterID=CID-dac2e9fa-65d2-4963-a7b5-bb4d0280d3f4
+cTime=0
+datanodeUuid=c44514a0-9ed6-4642-b3a8-5af79f03d7a4
+storageType=DATA_NODE
+layoutVersion=-56
 ```
 
 具体解释:
@@ -409,32 +409,32 @@ datanode也可以配置成多个目录，每个目录存储的数据不一样。
 
 > 将我们纯净的虚拟机复制一台出来，作为我们新的节点
 
-1. 修改mac地址以及IP地址
+2. 修改mac地址以及IP地址
 
 ```shell
 修改mac地址命令
-	vim /etc/udev/rules.d/70-persistent-net.rules
+vim /etc/udev/rules.d/70-persistent-net.rules
 修改ip地址命令
-	vim /etc/sysconfig/network-scripts/ifcfg-eth0
+vim /etc/sysconfig/network-scripts/ifcfg-eth0
 ```
 
-1. 关闭防火墙，关闭selinux
+3. 关闭防火墙，关闭selinux
 
 ```shell
 关闭防火墙
-	service iptables stop
+service iptables stop
 关闭selinux
-	vim /etc/selinux/config
+vim /etc/selinux/config
 ```
 
-1. 更改主机名
+4. 更改主机名
 
 ```shell
 更改主机名命令，将node04主机名更改为node04.hadoop.com
 vim /etc/sysconfig/network
 ```
 
-1. 四台机器更改主机名与IP地址映射
+5. 四台机器更改主机名与IP地址映射
 
 ```shell
 四台机器都要添加hosts文件
@@ -446,40 +446,40 @@ vim /etc/hosts
 192.168.52.130 node04.hadoop.com  node04
 ```
 
-1. node04服务器关机重启
+6. node04服务器关机重启
 
 ```shell
 node04执行以下命令关机重启
-	reboot -h now
+reboot -h now
 ```
 
-1. node04安装jdk
+7. node04安装jdk
 
 ```shell
 node04统一两个路径
-	mkdir -p /export/softwares/
-	mkdir -p /export/servers/
+mkdir -p /export/softwares/
+mkdir -p /export/servers/
 ```
 
 **然后解压jdk安装包，配置环境变量**
 
-1. 解压hadoop安装包
+8. 解压hadoop安装包
 
 ```shell
 在node04服务器上面解压hadoop安装包到/export/servers , node01执行以下命令将hadoop安装包拷贝到node04服务器
-	cd /export/softwares/
-	scp hadoop-2.6.0-cdh5.14.0-自己编译后的版本.tar.gz node04:$PWD
+cd /export/softwares/
+scp hadoop-2.6.0-cdh5.14.0-自己编译后的版本.tar.gz node04:$PWD
 
 node04解压安装包
-	tar -zxf hadoop-2.6.0-cdh5.14.0-自己编译后的版本.tar.gz -C /export/servers/
+tar -zxf hadoop-2.6.0-cdh5.14.0-自己编译后的版本.tar.gz -C /export/servers/
 ```
 
-1. 将node01关于hadoop的配置文件全部拷贝到node04
+9. 将node01关于hadoop的配置文件全部拷贝到node04
 
 ```shell
 node01执行以下命令，将hadoop的配置文件全部拷贝到node04服务器上面
-	cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop/
-	scp ./* node04:$PWD
+cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop/
+scp ./* node04:$PWD
 ```
 
 #### 3.15.2 服役新节点具体步骤
@@ -500,7 +500,7 @@ node03
 node04
 ```
 
-1. node01编辑hdfs-site.xml添加以下配置
+2. node01编辑hdfs-site.xml添加以下配置
 
 > 在namenode的hdfs-site.xml配置文件中增加dfs.hosts属性
 
@@ -527,7 +527,7 @@ vim hdfs-site.xml
 	</property>
 ```
 
-1. 刷新namenode
+3. 刷新namenode
 
 - node01执行以下命令刷新namenode
 
@@ -536,7 +536,7 @@ vim hdfs-site.xml
 Refresh nodes successful
 ```
 
-1. 更新resourceManager节点
+4. 更新resourceManager节点
 
 - node01执行以下命令刷新resourceManager
 
@@ -545,7 +545,7 @@ Refresh nodes successful
 19/03/16 11:19:47 INFO client.RMProxy: Connecting to ResourceManager at node01/192.168.52.100:8033
 ```
 
-1. namenode的slaves文件增加新服务节点主机名称
+5. namenode的slaves文件增加新服务节点主机名称
 
 > node01编辑slaves文件，并添加新增节点的主机，更改完后，slaves文件不需要分发到其他机器上面去
 
@@ -561,21 +561,21 @@ node03
 node04
 ```
 
-1. 单独启动新增节点
+6. 单独启动新增节点
 
 ```shell
 node04服务器执行以下命令，启动datanode和nodemanager : 
-	cd /export/servers/hadoop-2.6.0-cdh5.14.0/
-	sbin/hadoop-daemon.sh start datanode
-	sbin/yarn-daemon.sh start nodemanager
+cd /export/servers/hadoop-2.6.0-cdh5.14.0/
+sbin/hadoop-daemon.sh start datanode
+sbin/yarn-daemon.sh start nodemanager
 ```
 
-1. 使用负载均衡命令，让数据均匀负载所有机器
+7. 使用负载均衡命令，让数据均匀负载所有机器
 
 ```shell
 node01执行以下命令 : 
-	cd /export/servers/hadoop-2.6.0-cdh5.14.0/
-	sbin/start-balancer.sh
+cd /export/servers/hadoop-2.6.0-cdh5.14.0/
+sbin/start-balancer.sh
 ```
 
 #### 3.15.3 退役旧数据
@@ -595,7 +595,7 @@ node01执行以下命令 :
 特别注意：该文件当中一定要写真正的主机名或者ip地址都行，不能写node04
 ```
 
-1. 编辑namenode所在机器的hdfs-site.xml
+2. 编辑namenode所在机器的hdfs-site.xml
 
 > 编辑namenode所在的机器的hdfs-site.xml配置文件，添加以下配置
 
@@ -610,7 +610,7 @@ vim hdfs-site.xml
    </property>
 ```
 
-1. 刷新namenode，刷新resourceManager
+3. 刷新namenode，刷新resourceManager
 
 ```shell
 在namenode所在的机器执行以下命令，刷新namenode，刷新resourceManager : 
@@ -619,7 +619,7 @@ hdfs dfsadmin -refreshNodes
 yarn rmadmin -refreshNodes
 ```
 
-1. 节点退役完成，停止该节点进程
+4. 节点退役完成，停止该节点进程
 
 等待退役节点状态为decommissioned（所有块已经复制完成），停止该节点及节点资源管理器。注意：如果副本数是3，服役的节点小于等于3，是不能退役成功的，需要修改副本数后才能退役。
 
@@ -630,7 +630,7 @@ node04执行以下命令，停止该节点进程 :
 	sbin/yarn-daemon.sh stop nodemanager
 ```
 
-1. 从include文件中删除退役节点
+5. 从include文件中删除退役节点
 
 ```shell
 namenode所在节点也就是node01执行以下命令删除退役节点 :
@@ -643,31 +643,31 @@ node02
 node03
 ```
 
-1. node01执行一下命令刷新namenode，刷新resourceManager
+6. node01执行一下命令刷新namenode，刷新resourceManager
 
 ```shell
 hdfs dfsadmin -refreshNodes
 yarn rmadmin -refreshNodes
 ```
 
-1. 从namenode的slave文件中删除退役节点
+7. 从namenode的slave文件中删除退役节点
 
 ```shell
 namenode所在机器也就是node01执行以下命令从slaves文件中删除退役节点 : 
-	cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
-	vim slaves
+cd /export/servers/hadoop-2.6.0-cdh5.14.0/etc/hadoop
+vim slaves
 删除后的内容: 删除了 node04 
 node01
 node02
 node03
 ```
 
-1. 如果数据负载不均衡，执行以下命令进行均衡负载
+8. 如果数据负载不均衡，执行以下命令进行均衡负载
 
 ```shell
 node01执行以下命令进行均衡负载
-	cd /export/servers/hadoop-2.6.0-cdh5.14.0/
-	sbin/start-balancer.sh
+cd /export/servers/hadoop-2.6.0-cdh5.14.0/
+sbin/start-balancer.sh
 ```
 
 ### 3.16 hdfs快照snapShot管理
@@ -700,55 +700,55 @@ node01执行以下命令进行均衡负载
 ```text
 1、开启与禁用指定目录的快照
 
-    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -allowSnapshot /user
+[root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -allowSnapshot /user
 
-    Allowing snaphot on /user succeeded
+Allowing snaphot on /user succeeded
 
-    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -disallowSnapshot /user
+[root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -disallowSnapshot /user
 
-    Disallowing snaphot on /user succeeded
+Disallowing snaphot on /user succeeded
 
 2、对指定目录创建快照
 
-	注意：创建快照之前，先要允许该目录创建快照
+注意：创建快照之前，先要允许该目录创建快照
 
-    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -allowSnapshot /user
+[root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfsadmin -allowSnapshot /user
 
-    Allowing snaphot on /user succeeded
+Allowing snaphot on /user succeeded
 
-    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfs -createSnapshot /user    
+[root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfs -createSnapshot /user    
 
-    Created snapshot /user/.snapshot/s20190317-210906.549
+Created snapshot /user/.snapshot/s20190317-210906.549
 
-	通过web浏览器访问快照
+通过web浏览器访问快照
 
-	http://node01:50070/explorer.html#/user/.snapshot/s20190317-210906.549
+http://node01:50070/explorer.html#/user/.snapshot/s20190317-210906.549
 
 3、指定名称创建快照
 
-    [root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfs -createSnapshot /user mysnap1
+[root@node01 hadoop-2.6.0-cdh5.14.0]# hdfs dfs -createSnapshot /user mysnap1
 
-    Created snapshot /user/.snapshot/mysnap1
+Created snapshot /user/.snapshot/mysnap1
 
 4、重命名快照
 
-	hdfs dfs -renameSnapshot /user mysnap1 mysnap2
+hdfs dfs -renameSnapshot /user mysnap1 mysnap2
  
 5、列出当前用户所有可以快照的目录
 
-	hdfs lsSnapshottableDir
+hdfs lsSnapshottableDir
 
 6、比较两个快照不同之处
 
-    hdfs dfs -createSnapshot /user snap1
+hdfs dfs -createSnapshot /user snap1
 
-    hdfs dfs -createSnapshot /user snap2
+hdfs dfs -createSnapshot /user snap2
 
-    hdfs snapshotDiff  snap1 snap2
+hdfs snapshotDiff  snap1 snap2
 
 7、删除快照
 
-	hdfs dfs -deleteSnapshot /user snap1
+hdfs dfs -deleteSnapshot /user snap1
 ```
 
 ## 四、HDFS常用操作
@@ -955,8 +955,6 @@ public class HdfsApp {
         System.out.println(rest);
 
     }
-
-
 }
 
 ```
@@ -1304,13 +1302,11 @@ public static final String MAPPER_CLASS="MAPPER_CLASS";
 ```java
 
 public class Constants {
-
     public static final String INPUT_PATH ="INPUT_PATH";
     public static final String OUTPUT_PATH ="OUTPUT_PATH";
     public static final String OUTPUT_FILE ="OUTPUT_FILE";
     public static final String HDFS_URI ="HDFS_URI";
     public static final String MAPPER_CLASS="MAPPER_CLASS";
-
 }
 
 ```
@@ -1321,7 +1317,6 @@ public class Constants {
 //通过反射加载类，创建对象
 Class<?> clazz= Class.forName(properties.getProperty(Constants.MAPPER_CLASS));
 MyMapper mapper = (MyMapper)clazz.newInstance();
-
 ```
 
 # 第二部分——MapReduce
@@ -1330,7 +1325,11 @@ MyMapper mapper = (MyMapper)clazz.newInstance();
 
 源自Google的MapReduce论文，论文发表于2004年12月。
 
-Hadoop MapReduce 是一个分布式计算框架，用于编写批处理应用程序。编写好的程序可以提交到 Hadoop 集群上用于并行离线处理大规模的数据集，不适用实时处理。
+Hadoop MapReduce 是一个分布式计算框架，思想核心是“分而治之”，适用于大量复杂的任务处理场景（大规模数据处理场景），用于编写批处理应用程序。编写好的程序可以提交到 Hadoop 集群上用于并行离线处理大规模的数据集，不适用实时处理。
+
+Map负责“分”，即把复杂的任务分解为若干个“简单的任务”来并行处理。可以进行拆分的前提是这些小任务可以并行计算，彼此间几乎没有依赖关系。
+
+Reduce负责“合”，即对map阶段的结果进行全局汇总。
 
 
 ## 二、MapReduce编程模型简述
@@ -1347,9 +1346,22 @@ Hadoop MapReduce 是一个分布式计算框架，用于编写批处理应用程
 
 4. **shuffling** ： 由于 `Mapping` 操作可能是在不同的机器上并行处理的，所以需要通过 `shuffling` 将相同 `key` 值的数据分发到同一个节点上去合并，这样才能统计出最终的结果，此时得到 `K2` 为每一个单词，`List(V2)` 为可迭代集合，`V2` 就是 Mapping 中的 V2；
 
+   shuffling 是 Mapreduce 的核心，它分布在 Mapreduce 的 map 阶段和 reduce 阶段。一般把从 Map 产生输出开始到 Reduce 取得数据作为输入之前的过程称作 shuffle。
+
+   1. **`Collect阶段`**：将 MapTask 的结果输出到默认大小为 100M 的环形缓冲区，保存的是 key/value，Partition 分区信息等。
+   2. **`Spill阶段`**：当内存中的数据量达到一定的阀值的时候，就会将数据写入本地磁盘，在将数据写入磁盘之前需要对数据进行一次排序的操作，如果配置了 combiner，还会将有相同分区号和 key 的数据进行排序。
+   3. **`Merge阶段`**：把所有溢出的临时文件进行一次合并操作，以确保一个 MapTask 最终只产生一个中间数据文件。
+   4. **`Copy阶段`**：ReduceTask 启动 Fetcher 线程到已经完成 MapTask 的节点上复制一份属于自己的数据，这些数据默认会保存在内存的缓冲区中，当内存的缓冲区达到一定的阀值的时候，就会将数据写到磁盘之上。
+   5. **`Merge阶段`**：在 ReduceTask 远程复制数据的同时，会在后台开启两个线程对内存到本地的数据文件进行合并操作。
+   6. **`Sort阶段`**：在对数据进行合并的同时，会进行排序操作，由于 MapTask 阶段已经对数据进行了局部的排序，ReduceTask 只需保证 Copy 的数据的最终整体有效性即可。
+
+   Shuffle 中的缓冲区大小会影响到 mapreduce 程序的执行效率，原则上说，缓冲区越大，磁盘io的次数越少，执行速度就越快
+
+   缓冲区的大小可以通过参数调整,  参数：`mapreduce.task.io.sort.mb`  默认100M。
+
 5. **Reducing** : 设置整合归并规则。这里的案例是统计单词出现的总次数，所以 `Reducing` 对 `List(V2)` 进行归约求和操作，最终输出。
 
-MapReduce 编程模型中 `splitting` 和 `shuffing` 操作都是由框架实现的，需要我们自己编程实现的只有 `mapping` 和 `reducing`，这也就是 MapReduce 这个称呼的来源。MapReduce 框架专门用于 `<key，value>` 键值对处理，它将作业的输入视为一组 `<key，value>` 对，并生成一组 `<key，value>` 对作为输出。输出和输出的 `key` 和 `value` 都必须实现[Writable](http://hadoop.apache.org/docs/stable/api/org/apache/hadoop/io/Writable.html) 接口。
+MapReduce 编程模型中 `splitting` 和 `shuffing` 操作都是由框架实现的，需要我们自己编程实现的只有 `mapping` 和 `reducing`，这也就是 MapReduce 这个称呼的来源。MapReduce 框架专门用于 `<key，value>` 键值对处理，它将作业的输入视为一组 `<key，value>` 对，并生成一组 `<key，value>` 对作为输出。输出和输出的 `key` 和 `value` 都必须实现Writable 接口。
 
 ```
 (input) <k1, v1> -> map -> <k2, v2> -> combine -> <k2, v2> -> reduce -> <k3, v3> (output)
@@ -1411,7 +1423,14 @@ HBase	Hive
 
 ### 4.2 WordCountMapper
 
-自定义mapper类，实现将每行数据按照指定分隔符进行拆分，继承Hadoop提供的Mapper类，并且重写map函数，在map函数中，实现拆分的逻辑。这里需要注意在 MapReduce 中必须使用 Hadoop 定义的类型，因为 Hadoop 预定义的类型都是[可序列化](https://www.jianshu.com/p/89c2a19772e2)，可比较的，所有类型均实现了 `WritableComparable` 接口。
+自定义mapper类，实现将每行数据按照指定分隔符进行拆分，继承Hadoop提供的Mapper类，并且重写map函数，在map函数中，实现拆分的逻辑。这里需要注意在 MapReduce 中必须使用 Hadoop 定义的类型，因为 Hadoop 预定义的类型都是可序列化，可比较的，所有类型均实现了 `WritableComparable` 接口。
+
+Mapper类里声明了
+
+1. **setup方法**： 我们Mapper类当中的初始化方法，我们一些对象的初始化工作都可以放到这个方法里面来实现
+2. **map方法**： 读取的每一行数据，都会来调用一次map方法，这个方法也是我们最重要的方法，可以通过这个方法来实现我们每一条数据的处理
+3. **cleanup方法**： 在我们整个maptask执行完成之后，会马上调用cleanup方法，这个方法主要是用于做我们的一些清理工作，例如连接的断开，资源的关闭等等
+4. **run方法**： 如果我们需要更精细的控制我们的整个MapTask的执行，那么我们可以覆写这个方法，实现对我们所有的MapTask更精确的操作控制
 
 ```java
 import org.apache.hadoop.mapreduce.Mapper;
@@ -1440,18 +1459,14 @@ public class WordCountMapper extends Mapper<LongWritable,Text,Text, IntWritable>
 
     @Override
     protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-
         // 把value对应的行数据按照指定的分隔符拆分
         String[] words = value.toString().split("\t");
-
         for (String word : words){
-            //使用上下文将结果写出去，当前的word是Java的String类型，追加数字是int类型，要转换为Hadoop的类型，这些类型都是类，因此做一个封装
+        //使用上下文将结果写出去，当前的word是Java的String类型，追加数字是int类型，要转换为Hadoop的类型，这些类型都是类，因此做一个封装
             context.write(new Text(word) , new IntWritable(1));
         }
-
     }
 }
-
 ```
 
 `WordCountMapper` 对应下图的 Mapping 操作：
@@ -1474,6 +1489,13 @@ public class Mapper<KEYIN, VALUEIN, KEYOUT, VALUEOUT> {
 + **VALUEOUT**：`mapping` 输出 value 的类型，即每个单词出现的次数；这里用 `int` 类型，对应 `IntWritable` 类型。
 
 ### 4.3 WordCountReducer
+
+Reducer类中声明了如下的方法：
+
+1. **setup方法**： 在我们的ReduceTask初始化之后马上调用，我们的一些对象的初始化工作，都可以在这个类当中实现
+2. **reduce方法**： 所有从MapTask发送过来的数据，都会调用reduce方法，这个方法也是我们reduce当中最重要的方法，可以通过这个方法实现我们的数据的处理
+3. **cleanup方法**： 在我们整个ReduceTask执行完成之后，会马上调用cleanup方法，这个方法主要就是在我们reduce阶段处理做我们一些清理工作，例如连接的断开，资源的关闭等等
+4. **run方法**： 如果我们需要更精细的控制我们的整个ReduceTask的执行，那么我们可以覆写这个方法，实现对我们所有的ReduceTask更精确的操作控制
 
 在 Reduce 中进行单词出现次数的统计：
 
@@ -1653,10 +1675,7 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
  */
 public class WordCountLocalApp {
 
-
-
     public static void main(String[] args) throws Exception {
-
 
         Configuration configuration = new Configuration();
         // 指明 HDFS 的地址
@@ -1686,8 +1705,6 @@ public class WordCountLocalApp {
 
         // 使用wautForCompletion方法，将作业提交到群集并等待它完成，参数设置为 true 代表打印显示对应的进度
         boolean result = job.waitForCompletion(true);
-
-
         // 根据作业结果,终止当前运行的 Java 虚拟机,退出程序
         System.exit(result ? 0 : -1);
 
@@ -1702,12 +1719,10 @@ public class WordCountLocalApp {
 如果想要的结果不区分到小写，让结果转换成大写或小写，只需要在Mapper类map函数写出数据时，设置大小写。
 
 ```java
-
-    //转换为小写
-    context.write(new Text(word.toLowerCase()) , new IntWritable(1));
-    //转换为大写
-    context.write(new Text(word.toUpperCase()) , new IntWritable(1));
-
+//转换为小写
+context.write(new Text(word.toLowerCase()) , new IntWritable(1));
+//转换为大写
+context.write(new Text(word.toUpperCase()) , new IntWritable(1));
 ```
 
 
@@ -2107,17 +2122,109 @@ public class AccessPartitioner extends Partitioner<Text, Access> {
 
 ```
 
+## 八、MapReduce的工作机制
+
+### 8.1 MapTask工作机制
+
+**简单步骤**
+
+inputFile通过split被逻辑切分为多个split文件，通过Record按行读取内容给map（用户自己实现的）进行处理，数据被map处理结束之后交给OutputCollector收集器，对其结果key进行分区（默认使用hash分区），然后写入buffer，每个map task都有一个内存缓冲区，存储着map的输出结果，当缓冲区快满的时候需要将缓冲区的数据以一个临时文件的方式存放到磁盘，当整个map  task结束后再对磁盘中这个map task产生的所有临时文件做合并，生成最终的正式输出文件，然后等待reduce task来拉数据。
+
+**详细步骤**
+
+1. 读取数据组件 **InputFormat** (默认 TextInputFormat) 会通过 `getSplits` 方法对输入目录中文件进行逻辑切片规划得到 `block`, 有多少个 `block`就对应启动多少个 `MapTask`
+2. 将输入文件切分为 `block` 之后, 由 `RecordReader` 对象 (默认是LineRecordReader) 进行**读取**, 以 `\n` 作为分隔符, 读取一行数据, 返回 `<key，value>`. Key 表示每行首字符偏移值, Value 表示这一行文本内容
+3. 读取 `block` 返回 `<key,value>`, **进入用户自己继承的 Mapper 类中**，执行用户重写的 map 函数, RecordReader 读取一行这里调用一次
+4. Mapper 逻辑结束之后, 将 Mapper 的每条结果通过 `context.write` 进行collect数据收集. 在 collect 中, 会先对其进行分区处理，默认使用 **HashPartitioner**
+
+> MapReduce 提供 Partitioner 接口, 它的作用就是根据 Key 或 Value 及 Reducer  的数量来决定当前的这对输出数据最终应该交由哪个 Reduce task 处理, 默认对 Key Hash 后再以 Reducer 数量取模.  默认的取模方式只是为了平均 Reducer 的处理能力, 如果用户自己对 Partitioner 有需求, 可以订制并设置到 Job 上
+
+5. 接下来, 会将数据写入内存, 内存中这片区域叫做环形缓冲区, 缓冲区的作用是批量收集 Mapper 结果, 减少磁盘 IO 的影响. 我们的 **Key/Value 对以及 Partition 的结果都会被写入缓冲区**. 当然, 写入之前，Key 与 Value 值都会被序列化成字节数组
+
+> 环形缓冲区其实是一个数组, 数组中存放着 Key, Value 的序列化数据和 Key, Value 的元数据信息, 包括 Partition, Key 的起始位置, Value 的起始位置以及 Value 的长度. 环形结构是一个抽象概念。 
+>  缓冲区是有大小限制, 默认是 100MB. 当 Mapper 的输出结果很多时, 就可能会撑爆内存,  所以需要在一定条件下将缓冲区中的数据临时写入磁盘, 然后重新利用这块缓冲区. 这个从内存往磁盘写数据的过程被称为 Spill, 中文可译为溢写. 这个溢写是由单独线程来完成, 不影响往缓冲区写 Mapper 结果的线程. 溢写线程启动时不应该阻止 Mapper 的结果输出,  所以整个缓冲区有个溢写的比例 spill.percent. 这个比例默认是 0.8, 也就是当缓冲区的数据已经达到阈值 buffer size * spill percent = 100MB * 0.8 = 80MB, 溢写线程启动, 锁定这 80MB 的内存, 执行溢写过程.  Mapper 的输出结果还可以往剩下的 20MB 内存中写, 互不影响
+
+6. 当溢写线程启动后, 需要**对这 80MB 空间内的 Key 做排序 (Sort)**. 排序是 MapReduce 模型默认的行为, 这里的排序也是对序列化的字节做的排序
+
+> 如果 Job 设置过 Combiner, 那么现在就是使用 Combiner 的时候了. 将有相同 Key 的 Key/Value 对的 Value 合并在起来, 减少溢写到磁盘的数据量. Combiner 会优化 MapReduce 的中间结果, 所以它在整个模型中会多次使用 \	 那哪些场景才能使用 Combiner 呢? 从这里分析, Combiner 的输出是 Reducer 的输入, Combiner  绝不能改变最终的计算结果. Combiner 只应该用于那种 Reduce 的输入 Key/Value 与输出 Key/Value  类型完全一致, 且不影响最终结果的场景. 比如累加, 最大值等. Combiner 的使用一定得慎重, 如果用好, 它对 Job  执行效率有帮助, 反之会影响 Reducer 的最终结果
+
+7. **合并溢写文件**, 每次溢写会在磁盘上生成一个临时文件 (写之前判断是否有 Combiner), 如果 Mapper 的输出结果真的很大, 有多次这样的溢写发生, 磁盘上相应的就会有多个临时文件存在. 当整个数据处理结束之后开始对磁盘中的临时文件进行 Merge 合并, 因为最终的文件只有一个,  写入磁盘, 并且为这个文件提供了一个索引文件, 以记录每个reduce对应数据的偏移量
+
+【mapTask的一些基础设置配置】
+
+| 配置                               | 默认值                           | 解释                       |
+| ---------------------------------- | -------------------------------- | -------------------------- |
+| `mapreduce.task.io.sort.mb`        | 100                              | 设置环型缓冲区的内存值大小 |
+| `mapreduce.map.sort.spill.percent` | 0.8                              | 设置溢写的比例             |
+| `mapreduce.cluster.local.dir`      | `${hadoop.tmp.dir}/mapred/local` | 溢写数据目录               |
+| `mapreduce.task.io.sort.factor`    | 10                               | 设置一次合并多少个溢写文件 |
+
+### 8.2 ReduceTask工作机制
+
+**简单步骤**
+
+Reduce 大致分为 copy、sort、reduce 三个阶段，重点在前两个阶段。copy 阶段包含一个 eventFetcher  来获取已完成的 map 列表，由 Fetcher 线程去 copy 数据，在此过程中会启动两个 merge 线程，分别为  inMemoryMerger 和 onDiskMerger，分别将内存中的数据 merge 到磁盘和将磁盘中的数据进行 merge。待数据  copy 完成之后，copy 阶段就完成了，开始进行 sort 阶段，sort 阶段主要是执行 finalMerge 操作，纯粹的 sort  阶段，完成之后就是 reduce 阶段，调用用户定义的 reduce 函数进行处理。
+
+**详细步骤**
+
+1. **Copy阶段**。简单地拉取数据。Reduce进程启动一些数据copy线程(Fetcher)，通过HTTP方式请求maptask获取属于自己的文件。
+2. **Merge阶段**。这里的merge如map端的merge动作，只是数组中存放的是不同map端copy来的数值。Copy过来的数据会先放入内存缓冲区中，这里的缓冲区大小要比map端的更为灵活。merge有三种形式：内存到内存；内存到磁盘；磁盘到磁盘。默认情况下第一种形式不启用。当内存中的数据量到达一定阈值，就启动内存到磁盘的merge。与map  端类似，这也是溢写的过程，这个过程中如果你设置有Combiner，也是会启用的，然后在磁盘中生成了众多的溢写文件。第二种merge方式一直在运行，直到没有map端的数据时才结束，然后启动第三种磁盘到磁盘的merge方式生成最终的文件。
+3. **合并排序**。把分散的数据合并成一个大的数据后，还会再对合并后的数据排序。
+4. **对排序后的键值对调用reduce方法**。键相等的键值对调用一次reduce方法，每次调用会产生零个或者多个键值对，最后把这些输出的键值对写入到HDFS文件中。
+
 # 第三部分——Yarn
 
-## 一、hadoop yarn 简介
+## 一、Yarn 简介
 
-**Apache YARN** (Yet Another Resource Negotiator)  是 hadoop 2.0 引入的集群资源管理系统。用户可以将各种服务框架部署在 YARN 上，由 YARN 进行统一地管理和资源分配。
+YARN是Hadoop2引入的通用的资源管理和任务调度的平台，可以在YARN上运行MapReduce、Tez、Spark等多种计算框架，只要计算框架实现了YARN所定义的接口，都可以运行在这套通用的Hadoop资源管理和任务调度平台上。<img src="../../picture/yarn-base.png"/>
 
-<img src="../../picture/yarn-base.png"/>
+Hadoop 1.0是由HDFS和MapReduce V1组成的，YARN出现之前是MapReduce V1来负责资源管理和任务调度，MapReduce V1由JobTracker和TaskTracker两部分组成。
+
+**MapReduce V1有如下缺点**：
+
+1. 扩展性差：
+
+   在MapReduce V1中，JobTracker同时负责资源管理和任务调度，而JobTracker只有一个节点，所以JobTracker成为了制约系统性能的一个瓶颈，制约了Hadoop平台的扩展性。
+
+2. 可靠性低：
+
+   MapReduce V1中JobTracker存在单点故障问题，所以可靠性低。
+
+3. 资源利用率低：
+
+   MapReduce V1采用了基于槽位的资源分配模型，槽位是一种粗粒度的资源划分单位。
+
+​		一是通常情况下为一个job分配的槽位不会被全部利用。
+
+​		二是一个MapReduce任务的Map阶段和Reduce阶段会划分了固定的槽位，并且不可以共用，很多时候一种类型的槽位资源很紧张而另外一种类型的槽位很空闲，导致资源利用率低。
+
+4. 不支持多种计算框架
+
+MapReduce V1这种资源管理和任务调度方式只适合MapReduce这种计算框架，而MapReduce这种离线计算框架很多时候不能满足应用需求。
+
+**yarn的优点**：
+
+1. 支持多种计算框架
+
+   YARN是通用的资源管理和任务调度平台，只要实现了YARN的接口的计算框架都可以运行在YARN上。
+
+2. 资源利用率高
+
+   多种计算框架可以共用一套集群资源，让资源充分利用起来，提高了利用率。
+
+3. 运维成本低
+
+   避免一个框架一个集群的模式，YARN降低了集群的运维成本。
+
+4. 数据可共享
+
+   共享集群模式可以让多种框架共享数据和硬件资源，减少数据移动带来的成本。
 
 ## 二、YARN架构
 
  <img src="../../picture/Figure3Architecture-of-YARN.png"/>
+
+YARN的基本设计思想是将MapReduce  V1中的JobTracker拆分为两个独立的服务：ResourceManager和ApplicationMaster。ResourceManager负责整个系统的资源管理和分配，ApplicationMaster负责单个应用程序的的管理。
 
 ### 2.1 ResourceManager
 
@@ -2140,7 +2247,7 @@ public class AccessPartitioner extends Partitioner<Text, Access> {
 - 跟踪任务状态和进度，报告资源的使用情况和应用的进度信息；
 - 负责任务的容错。
 
-### 2.4 Contain
+### 2.4 Container
 
 `Container` 是 YARN 中的资源抽象，它封装了某个节点上的多维度资源，如内存、CPU、磁盘、网络等。当 AM 向 RM 申请资源时，RM 为 AM 返回的资源是用 `Container` 表示的。YARN 会为每个任务分配一个 `Container`，该任务只能使用该 `Container` 中描述的资源。`ApplicationMaster` 可在 `Container` 内运行任何类型的任务。例如，`MapReduce ApplicationMaster` 请求一个容器来启动 map 或 reduce 任务，而 `Giraph ApplicationMaster` 请求一个容器来运行 Giraph 任务。
 
@@ -2148,13 +2255,20 @@ public class AccessPartitioner extends Partitioner<Text, Access> {
 
 <img src="../../picture/yarn工作原理简图.png"/>
 
-1. `Client` 提交作业到 YARN 上；
+当jobclient向YARN提交一个应用程序后，YARN将分两个阶段运行这个应用程序：一是启动ApplicationMaster;第二个阶段是由ApplicationMaster创建应用程序，为它申请资源，监控运行直到结束。
 
-2. `Resource Manager` 选择一个 `Node Manager`，启动一个 `Container` 并运行 `Application Master` 实例；
+具体步骤如下:
 
-3. `Application Master` 根据实际需要向 `Resource Manager` 请求更多的 `Container` 资源（如果作业很小, 应用管理器会选择在其自己的 JVM 中运行任务）；
+1. 用户向YARN提交一个应用程序，并指定ApplicationMaster程序、启动ApplicationMaster的命令、用户程序。
+2. RM为这个应用程序分配第一个Container，并与之对应的NM通讯，要求它在这个Container中启动应用程序ApplicationMaster。
+3. ApplicationMaster向RM注册，然后拆分为内部各个子任务，为各个内部任务申请资源，并监控这些任务的运行，直到结束。
+4. AM采用轮询的方式向RM申请和领取资源。
+5. RM为AM分配资源，以Container形式返回
+6. AM申请到资源后，便与之对应的NM通讯，要求NM启动任务。
+7. NodeManager为任务设置好运行环境，将任务启动命令写到一个脚本中，并通过运行这个脚本启动任务
+8. 各个任务向AM汇报自己的状态和进度，以便当任务失败时可以重启任务。
+9. 应用程序完成后，ApplicationMaster向ResourceManager注销并关闭自己
 
-4. `Application Master` 通过获取到的 `Container` 资源执行分布式计算。
 ## 四、YARN工作原理详述
 
 <img src="../../picture/yarn工作原理.png"/>
@@ -2198,17 +2312,485 @@ YARN 中的任务将其进度和状态 (包括 counter) 返回给应用管理器
 # hadoop jar hadoop-mapreduce-examples-2.6.0-cdh5.15.1.jar pi 3 3
 ```
 
+## 六、ResourceManager和NodeManager
+
+### 6.1 resourceManager基本介绍
+
+ResourceManager负责集群中所有资源的统一管理和分配，它接收来自各个NodeManager的资源汇报信息，并把这些信息按照一定的策略分配给各个ApplicationMaster。
+
+**RM的职能**
+
+1. 与客户端交互，处理客户端的请求。
+2. 启动和管理AM，并在它运行失败时候重新启动它。
+3. 管理NM，接收来自于NM的资源汇报信息，并向NM下达管理指令。
+4. 资源管理和调度，接收来自于AM的资源请求，并为它分配资源
+
+### 6.2 ResourceManager的5大构成
+
+**用户交互模块**:
+
+1. clientRMService : 为普通用户服务，处理请求，如：提交应用程序、终止程序、获取程序状态
+2. adminService :  给管理员提供的服务。普通用户交互模块是ClientRMService，管理员交互模块是AdminService，之所以要将两个模块分开，用不同的通信通道发送给ResourceManager，是因为要避免普通用户的请求过多导致管理员请求被阻塞
+3. WebApp :  更友好的展示集群资源和程序运行状态
+
+**NM管理模块**:
+
+1. NMLivelinessMonitor : 监控NM是否活着，如果指定时间内未收到心跳，就从集群中移除。RM会通过心跳告诉AM某个NM上的Container失效，如果Am判断需要重新执行，则AM重新向RM申请资源。
+2. NodesListManager : 维护inlude（正常）和exlude（异常）的NM节点列表。默认情况下，两个列表都为空，可以由管理员添加节点。exlude列表里的NM不允许与RM进行通信。
+3. ResourceTrackerService : 处理来自NM的请求，包括注册和心跳。注册是NM启动时的操作，包括节点ID和可用资源上线等。心跳包括各个Container运行状态，运行Application列表、节点健康状态
+
+**AM管理模块**:
+
+1. AMLivelinessMonitor : 监控AM是否还活着，如果指定时间内没有接受到心跳，则将正在运行的Container置为失败状态，而AM会被重新分配到另一个节点上
+2. ApplicationMasterLauncher: 要求某一个NM启动ApplicationMaster，它处理创建AM的请求和kill AM的请求
+3. ApplicationMasterService :  处理来自AM的请求，包括注册、心跳、清理。注册是在AM启动时发送给ApplicationMasterService的；心跳是周期性的，包括请求资源的类型、待释放的Container列表；清理是程序结束后发送给RM，以回收资源清理内存空间；
+
+**Application管理模块**:
+
+1. ApplicationACLLsManager : 管理应用程序的访问权限，分为查看权限和修改权限。
+2. RMAppManager : 管理应用程序的启动和关闭
+3. ContainerAllocationExpirer :  RM分配Container给AM后，不允许AM长时间不对Container使用，因为会降低集群的利用率，如果超时（时间可以设置）还没有在NM上启动Container，RM就强制回收Container。
+
+**状态机管理模块**:
+
+1. RMApp : RMApp维护一个应用程序的的整个运行周期，一个应用程序可能有多个实例，RMApp维护的是所有实例的
+2. RMAppAttempt : RMAppAttempt维护一个应用程序实例的一次尝试的整个生命周期
+3. RMContainer : RMContainer维护一个Container的整个运行周期（可能和任务的周期不一致）
+4. RMNode : RMNode维护一个NodeManager的生命周期，包括启动到运行结束的整个过程。
+
+**安全模块**:
+
+- RM自带了全面的权限管理机制。主要由ClientToAMSecretManager、ContainerTokenSecretManager、ApplicationTokenSecretManager等模块组成。
+
+**资源分配模块**：
+
+- ResourceScheduler：ResourceScheduler是资源调度器，他按照一定的约束条件将资源分配给各个应用程序。RM自带了一个批处理资源调度器（FIFO）和两个多用户调度器Fair Scheduler 和Capacity Scheduler。
+
+### 6.3 ApplicationMaster的启动
+
+<img src="../../picture/1565662264358.png" />
+
+1. 客户端提交一个任务给RM，ClientRMService负责处理客户端请求
+2. ClentRMService通知RMAppManager。
+3. RMAppManager为应用程序创建一个RMApp对象来维护任务的状态。
+4. RMApp启动任务，创建RMAppAttempt对象。
+5. RMAppAttempt进行一些初始化工作，然后通知ResourceScheduler申请资源。
+6. ResourceScheduler为任务分配资源后，创建一个RMContainer维护Container状态
+7. 并通知RMAppAttempt，已经分配资源。
+8. RMAppAttempt通知ApplicationMasterLauncher在资源上启动AM。
+9. 在NodeManager的已分配资源上启动AM
+10. AM启动后向ApplicationMasterService注册。
+
+### 6.4 申请和分配Container
+
+AM向RM请求资源和RM为AM分配资源是两个阶段的循环过程：
+
+- 阶段一：AM请求资源请求并领取资源的过程，这个过程是AM发送请求、RM记录请求。
+- 阶段二：NM向RM汇报各个Container运行状态，如果RM发现它上面有空闲的资源就分配给等待的AM。
+
+<img src="../../picture/1565662491612.png"/>
+
+具体过程如下：
+
+**阶段一**：
+
+1. AM通过RPC函数向RM发送资源需求信息，包括新的资源需求描述、待释放的Container列表、请求加入黑名单的节点列表、请求移除黑名单的节点列表等
+2. RM的ApplicationMasterService负责处理AM的请求。一旦收到请求，就通知RMAppAttempt，更新应用程序执行进度，在AMLivenessMonitor中记录更新时间。
+3. ApplicationMasterService调用ResourceScheduler，将AM的资源需求汇报给ResourceScheduler。
+4. ResouceScheduler首先读取待释放的Container列表，通知RMContainer更改状态，杀死要释放的Container，然后将新的资源需求记录，如果资源足够就记录已经分配好资源。
+
+**阶段二**：
+
+1. NM通过RPC向RM汇报各自的各个Container的运行情况
+2. RM的ResourceTrackerService负责处理来自NM的汇报，收到汇报后，就通知RMNode更改Container状态，并通知ResourceScheduler。
+3. ResourceScheduler收到通知后，如果有可分配的空闲资源，就将资源分配给等待资源的AM，等待AM下次心跳将资源领取走。
+
+### 6.5 NodeManager
+
+NM是单个节点上的代理，功能包括与ResourceManager保持通讯、管理Container的生命周期、监控Container的资源使用、追踪节点健康状态、管理日志。
+
+**状态机**
+
+NodeManager维护着三类状态机，分别是Application、Container、LocalizedResource。
+
+1. Application状态机
+
+   RM上有一个整个集群上Application信息列表，而一个NM上也有一个处在它自己节点的Application的信息列表，NodeManager上的Application状态机维护着NodeManager上Application的状态。
+
+这有利于对一个NM节点上的同一个Application所有的Container进行统一管理。
+
+1. Container状态机
+
+   Container状态机维护NodeManager上所有Container的生命周期。
+
+2. LocalizedResource状态机
+
+   LocalizedResource状态是NodeManager上用于维护一个资源生命周期的数据结构。资源包括文件、JAR包等。
+
+**Container生命周期的管理**
+
+NodeManager中的ContainerManager负责接收AM发来的请求以启动Container，Container的启动过程分三个阶段：资源本地化、启动并运行Container、资源清理。
+
+1. 资源本地化
+
+资源本地化主要是进行分布是缓存工作，分为应用程序初始化和Container本地化。
+
+2. 运行Container
+
+Container运行是由ContainerLauncher服务完成启动后，调用ContainerExecutor来进行的。主要流程为：将待运行的Container所需要的环境变量和运行命令写到Shell脚本launch_container.sh中，并将启动该脚本的命令写入default_container_executor.sh中，然后通过运行该脚本启动container。
+
+3. 资源清理
+
+container清理是资源本地化的逆过程，是指当container运行完成后，NodeManager来回收资源。
+
+## 七、Yarn的ApplicationMaster
+
+ApplicationMaster实际上是特定计算框架的一个实例，每种计算框架都有自己独特的ApplicationMaster，负责与ResourceManager协商资源，并和NodeManager协同来执行和监控Container。MapReduce只是可以运行在YARN上一种计算框架。
+
+### 7.1 applicationMaster的职能
+
+Application启动后，将负责以下任务：
+
+1. 初始化向ResourceManager报告自己的活跃信息的进程  (注册)
+2. 计算应用程序的的资源需求。
+3. 将需求转换为YARN调度器可以理解的ResourceRequest。
+4. 与调度器协商申请资源
+5. 与NodeManager协同合作使用分配的Container。
+6. 跟踪正在运行的Container状态，监控它的运行。
+7. 对Container或者节点失败的情况进行处理，在必要的情况下重新申请资源。
+
+### 7.2 报告活跃
+
+1. 注册
+
+ApplicationMaster执行的第一个操作就是向ResourceManager注册，注册时AM告诉RM它的IPC的地址和网页的URL。
+
+IPC地址是面向客户端的服务地址；网页URL是AM的一个Web服务的地址，客户端可以通过Http获取应用程序的状态和信息。
+
+注册后，RM返回AM可以使用的信息，包括：YARN接受的资源的大小范围、应用程序的ACL信息。
+
+2. 心跳
+
+注册成功后，AM需要周期性地发送心跳到RM确认他还活着。参数yarn.am.liveness-monitor.expiry配置AM心跳最大周期，如果RM发现超过这个时间还没有收到AM的心跳，那么就判断AM已经死掉。
+
+### 7.3 资源需求
+
+AM所需要的资源分为静态资源和动态资源。
+
+1. 静态资源
+
+在任务提交时就能确定，并且在AM运行时不再变化的资源是静态资源，比如MapReduce程序中的Map的数量。
+
+2. 动态资源
+
+AM在运行时确定要请求数量的资源是动态资源。
+
+### 7.4 调度任务
+
+当AM的资源请求数量达到一定数量或者到了心跳时，AM才会发送心跳到RM，请求资源，心跳是以ResourceRequest形式发送的，包括的信息有：resourceAsks、ContainerID、containersToBeReleased。
+
+RM响应的信息包括：新分配的Container列表、已经完成了的Container状态、集群可用的资源上限。
+
+### 7.5 启动container
+
+1. AM从RM那里得到了Container后就可以启动Container了。
+2. AM首先构造ContainerLaunchContext对象，包括分配资源的大小、安全令牌、启动Container执行的命令、进程环境、必要的文件等
+3. AM与NM通讯，发送StartContainerRequest请求，逐一或者批量启动Container。
+4. NM通过StartContainerResponse回应请求，包括：成功启动的Container列表、失败的Container信信息等。
+5. 整个过程中，AM没有跟RM进行通信。
+6. AM也可以发送StopContainerRequest请求来停止Container。
+
+### 7.6 完成的container
+
+当Container执行结束时，由RM通知AM Container的状态，AM解释Container状态并决定如何继续操作。所以YARN平台只是负责为计算框架提供Container信息。
+
+### 7.7 AM的失败和恢复
+
+当AM失效后，YARN只负责重新启动一个AM，任务恢复到失效前的状态是由AM自己完成的。AM为了能实现恢复任务的目标，可以采用以下方案：将任务的状态持久化到外部存储中。比如：MapReduce框架的ApplicationMaster会将已完成的任务持久化，失效后的恢复时可以将已完成的任务恢复，重新运行未完成的任务。
+
+### 7.8 applicationMaster启动过程
+
+![img](https://qn.fivedata.cn/1565663682791.png?imageView2/0/q/75%7Cwatermark/2/text/5YWs5LyX5Y-377ya5LqU5YiG6ZKf5a2m5aSn5pWw5o2u/font/5b6u6L2v6ZuF6buR/fontsize/280/fill/I0M3MDgwOA==/dissolve/100/gravity/NorthWest/dx/10/dy/10)
+
+## 八、Yarn的资源调度
+
+1. 资源调度器的职能
+
+资源调度器是YARN最核心的组件之一，是一个插拔式的服务组件，负责整个集群资源的管理和分配。YARN提供了三种可用的资源调度器：FIFO、Capacity Scheduler、Fair Scheduler。
+
+2. 资源调度器的分类
+
+不同的任务类型对资源有着不同的负责质量要求，有的任务对时间要求不是很高(如Hive)，有的任务要求及时返还结果(如HBase)，有的任务是CPU密集型的(如过滤、统计类作业)，有的是I/O密集型的(如数据挖掘、机器学习)，所以简单的一种调度器并不能完全符合所有的任务类型。
+
+有两种调度器的设计思路：
+
+一是在一个物理Hadoop集群上虚拟多个Hadoop集群，这些集群各自有自己全套的Hadoop服务，典型的代表是HOD(Hadoop On Demand)调度器，Hadoop2.0中已经过时。
+
+另一种是扩展YARN调度器。典型的是Capacity Scheduler、Fair Scheduler。
+
+3. 基本架构
+
+**插拔式组件**
+
+YARN里的资源调度器是可插拔的，ResourceManager在初始化时根据配置创建一个调度器，可以通过参数yarn.resourcemanager.scheduler.class参数来设置调度器的主类是哪个，默认是CapacityScheduler，配置值为：org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacityScheduler。
+
+所有的资源调度器都要实现接口org.apache.hadoop.yarn.server.resourcemanager.scheduler.ResourceScheduler。
+
+**事件处理器**
+
+YARN的资源管理器实际上是一个事件处理器，它处理6个SchedulerEventType类型的事件。
+
+**事件说明**:
+
+- Node_Removed 集群中移除一个计算节点，资源调度器需要收到该事件后从可分配的资源总量中移除相应的资源量。
+- Node_Added 集群增加一个节点
+- Application_added RM收到一个新的Application。
+- Application_Remove 表示一个Application运行结束
+- Container_expired 当一个Container分配给AM后，如果在一段时间内AM没有启动Container，就触发这个事件。调度器会对该Container进行回收。
+- Node_Update RM收到NM的心跳后，就会触发Node_Update事件。
+
+### 8.1 资源调度三种模型介绍
+
+究竟使用哪种调度模型，取决于这个配置项，apache版本的hadoop默认使用的是capacity  scheduler调度方式。CDH版本的默认使用的是fair scheduler调度方式 : yarn-site.xml
+
+```text
+yarn.resourcemanager.scheduler.class
+```
+
+1. 双层资源调度模型
+
+YARN使用了双层资源调度模型。
+
+第一层：ResourceManager中的调度器将资源分配给各个ApplicationMaster。这一层调度由YARN的资源调度器来实现。
+
+第二层：ApplicationMaster再进一步将资源分配给它内部的各个任务。这一层的调度由用户程序这个计算框架来实现。
+
+YARN的资源分配过程是异步的，YARN的调度器分配给AM资源后，先将资源存入一个缓冲区内，当AM下次心跳时来领取资源。
+
+资源分配过程如下7个步骤：
+
+- 步骤1：NodeManager通过周期性的心跳汇报节点信息 : 告诉resourceManager当前剩余的资源信息
+- 步骤2：RM为NM返回一个应答，包括要释放的Container列表。
+- 步骤3：RM收到NM汇报的信息后，会出发资源调度器的Node_Update事件。
+- 步骤4：资源调度器收到Node_Update事件后，会按照一定的策略将该节点上资源分配给各个应用程序，并将分配结果存入一个内存数据结构中。
+- 步骤5：应用程序的ApplicationMaster周期性地向RM发送心跳，以领取最新分配的Container。
+- 步骤6：RM收到AM的心跳后，将分配给它的Container以心跳应答的方式返回给ApplicationMaster
+- 步骤7：AM收到新分配的Container后，会将这些Container进一步分配给他的内部子任务。
+
+1. 资源保证机制
+
+YARN采用增量资源分配机制来保证资源的分配。
+
+增量资源分配机制是指当YARN暂时不能满足应用程序的资源要求时，将现有的一个节点上的资源预留，等到这个节点上累计释放的资源满足了要求，再分配给ApplicationMaster。
+
+这种增量资源分配机制虽然会造成资源的浪费，但是能保证AM肯定会得到资源，不会被饿死。
+
+2. 资源分配算法
+
+YARN的资源调度器采用了主资源公平调度算法（DRF）来支持多维度资源调度。
+
+3. 资源抢占模型
+
+资源调度器中，每个队列可以设置一个最小资源量和最大资源量。为了提高集群使用效率，资源调度器会将负载较轻的队列资源分配给负载较重的队列使用，当负载较轻的队列突然接到了新的任务时，调度器才会将本属于该队列的资源分配给它，但是此时资源有可能正被其他队列使用，因此调度器必须等待其他队列释放资源，如果一段时间后发现资源还未得到释放，则进行资源抢占。
+
+关于资源抢占的实现，涉及到一下两个问题：
+
+- 如何决定是否抢占某个队列的资源
+- 如何使得资源抢占代价最小
+
+资源抢占是通过杀死正在使用的Container实现的，由于Container已经处于运行状态，直接杀死Container会造成已经完成的计算白白浪费，为了尽可能地避免资源浪费，YARN优先选择优先级低的Container做为资源抢占的对象，并且不会立刻杀死Container，而是将释放资源的任务留给ApplicationMaster中的应用程序，以期望他能采取一定的措施来执行释放这些Container，比如保存一些状态后退出，如果一段时间后，ApplicationMaster仍未主动杀死Container，则RM再强制杀死这些Container。
+
+### 8.2 层级队列管理机制FIFO调度策略
+
+![img](https://qn.fivedata.cn/1565664459193.png?imageView2/0/q/75%7Cwatermark/2/text/5YWs5LyX5Y-377ya5LqU5YiG6ZKf5a2m5aSn5pWw5o2u/font/5b6u6L2v6ZuF6buR/fontsize/280/fill/I0M3MDgwOA==/dissolve/100/gravity/NorthWest/dx/10/dy/10)
+
+Hadoop1.0中使用了平级队列的组织方式，而后来采用了层级队列的组织方式。
+
+层级队列的特点：
+
+- 子队列
+
+队列可以嵌套，每个队列都可以包含子队列；用户只能将应用程序提交到叶子队列中。
+
+- 最小容量
+
+每个子队列均有一个最小容量比属性，表示可以使用的父队列容量的百分比。
+
+调度器总是优先选择当前资源使用率最低的队列，并为之分配资源。
+
+指定了最小容量，但是不会保证会保持最小容量，同样会被分配给其他队列。
+
+- 最大容量
+
+队列指定了最大容量，任何时候队列使用的资源都不会超过最大容量。
+
+默认情况下队列的最大容量是无限大。
+
+- 用户权限管理
+
+管理员可以配置每个叶子节点队列对应的操作系统的用户和用户组。
+
+- 系统资源管理
+
+管理员设置了每个队列的容量，每个用户可以用资源的量，调度器根据这些配置来进行资源调度
+
+队列命名规则:
+
+为了防止队列名称的冲突和便于识别队列，YARN采用了自顶向下的路径命名规则，父队列和子队列名称采用.拼接。
+
+### 8.3 Capacity Scheduler
+
+![img](https://qn.fivedata.cn/1565664774469.png?imageView2/0/q/75%7Cwatermark/2/text/5YWs5LyX5Y-377ya5LqU5YiG6ZKf5a2m5aSn5pWw5o2u/font/5b6u6L2v6ZuF6buR/fontsize/280/fill/I0M3MDgwOA==/dissolve/100/gravity/NorthWest/dx/10/dy/10)
+
+![img](https://qn.fivedata.cn/1565664800767.png?imageView2/0/q/75%7Cwatermark/2/text/5YWs5LyX5Y-377ya5LqU5YiG6ZKf5a2m5aSn5pWw5o2u/font/5b6u6L2v6ZuF6buR/fontsize/280/fill/I0M3MDgwOA==/dissolve/100/gravity/NorthWest/dx/10/dy/10)
+
+Capacity Scheduler是Yahoo!开发的多用户调度器。主要有以下几个特点：
+
+- 容量保证
+
+管理员可以为队列设置最低保证和资源使用上限，同一个队列里的应用程序可以共享使用队列资源。
+
+- 灵活性:
+
+一个队列里的资源有剩余，可以暂时共享给其他队列，一旦该队列有的新的任务，其他队列会归还资源，这样尽量地提高了集群的利用率。
+
+- 多重租赁
+
+支持多用户共享集群和多应用程序同时运行
+
+- 安全保证
+
+每个队列有严格的ACL列表，限制了用户的权限
+
+- 动态更新配置文件
+
+管理员对参数的配置是动态的。
+
+配置方案:
+
+Capacity Scheduler的所有配置都在capactiy-scheduler.xml里，管理员修改后，要通过命令来刷写队列：yarn mradmin –refreshQueues
+
+Capacity Scheduler不允许管理员动态地减少队列数目，且更新的配置参数值应该是合法值。
+
+以下以队列tongyong为例来说明参数配置：
+
+【资源分配相关参数】
+
+```xml
+ <property>
+    <name>yarn.scheduler.capacity.root.tongyong.capacity</name>
+    <value>10</value>
+    <description>队列资源容量百分比</description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.tongyong.user-limit-factor</name>
+    <value>3</value>
+    <description>
+     每个用户最多可以使用的资源量百分比
+    </description>
+  </property>
+
+  <property>
+    <name>yarn.scheduler.capacity.root.tongyong.maximum-capacity</name>
+    <value>30</value>
+    <description>
+      队列资源的使用的最高上限，由于存在资源共享，所以队列使用的资源可能会超过capacity设置的量，但是不会超过maximum-capacity设置的量
+    </description>
+  </property>
+
+  <property>                                                                         
+    <name>yarn.scheduler.capacity.root.tongyong.minimum-user-limit-percent</name>   
+    <value>30</value>
+    <description>用户资源限制的百分比，当值为30时，如果有两个用户，每个用户不能超过50%，当有3个用户时，每个用户不能超过33%，当超过三个用户时，每个用户不能超过30%
+    </description>                                                                   
+ </property>
+```
+
+【限制应用程序数目相关参数】
+
+```xml
+<property>
+        <name>yarn.scheduler.capacity.root.tongyong.maximum-applications</name>
+        <value>200</value>
+         <description>
+           队列中同时处于等待和运行状态的应用程序的数量，如果多于这个数量的应用程序将被拒绝。
+        </description>
+ </property>
+ <property>
+        <name>yarn.scheduler.capacity.root.tongyong.maximum-am-resource-percent</name>
+        <value>0.1</value>
+        <description>
+          集群中用于运行应用程序ApplicationMaster的资源比例上限，该参数通常用于限制处于活动状态的应用程序的数目。
+       </description>
+ </property>
+```
+
+【队列的访问和权限控制参数】
+
+```xml
+<property>
+    <name>yarn.scheduler.capacity.root.tongyong.state</name>
+    <value>RUNNING</value>
+    <description>
+      队列状态，可以为STOPPED或者为RUNNING。如果改为STOPPED，用户将不能向集群中提交作业，但是正在运行的将正常结束。
+    </description>
+</property>
+<property>
+    <name>yarn.scheduler.capacity.root.tongyong.acl_submit_applications</name>
+    <value>root,tongyong,user1,user2</value>
+    <description>
+      限定哪些用户可以向队列里提交应用程序，该属性有继承性，子队列默认和父队列的配置是一样的。
+    </description>
+</property>
+<property>
+    <name>yarn.scheduler.capacity.root.tongyong.acl_administer_queue</name>
+    <value>root,tongyong</value>
+    <description>
+      限定哪些用户可以管理当前队列里的应用程序。
+    </description>
+</property>
+```
+
+### 8.4 Fair Scheduler
+
+![img](https://qn.fivedata.cn/1565665211687.png?imageView2/0/q/75%7Cwatermark/2/text/5YWs5LyX5Y-377ya5LqU5YiG6ZKf5a2m5aSn5pWw5o2u/font/5b6u6L2v6ZuF6buR/fontsize/280/fill/I0M3MDgwOA==/dissolve/100/gravity/NorthWest/dx/10/dy/10)
+
+![img](https://qn.fivedata.cn/1565665229800.png?imageView2/0/q/75%7Cwatermark/2/text/5YWs5LyX5Y-377ya5LqU5YiG6ZKf5a2m5aSn5pWw5o2u/font/5b6u6L2v6ZuF6buR/fontsize/280/fill/I0M3MDgwOA==/dissolve/100/gravity/NorthWest/dx/10/dy/10)
+
+基本特点:
+
+1. 资源公平共享
+
+默认是Fair策略分配资源，Fair 策略是一种基于最大最小公平算法实现的，所有应用程序平分资源。
+
+2. 支持资源抢占
+
+某个队列中有剩余资源时，调度器会将这些资源共享给其他队列，当该队列有了新的应用程序提交过来后，调度器会回收资源，调度器采用先等待再强制回收的策略。
+
+3. 负载均衡
+
+Fair Scheduler提供了一个基于任务数目的负载均衡机制，尽可能将系统中的任务均匀分布到各个节点上。
+
+4. 调度策略配置灵活
+
+可以每个队列选用不同的调度策略：FIFO、Fair、DRF
+
+5. 提高小应用程序的响应时间
+
+小作业也可以分配大资源，可以快速地运行完成
+
 # 第四部分——电商日志分析项目
 
 ## 一、什么是用户行为日志？
 
-  电商网站（例如淘宝、京东）的后端会记录每一个用户在网站上的操作，将每次访问的行为（访问，搜索，评论，历史订单）等等记录成独立的日志。电商网站会分析这些日志，对用户进行个性化推荐，对公司运营非常有帮助。
+电商网站（例如淘宝、京东）的后端会记录每一个用户在网站上的操作，将每次访问的行为（访问，搜索，评论，历史订单）等等记录成独立的日志。电商网站会分析这些日志，对用户进行个性化推荐，对公司运营非常有帮助。
 
-  如今，不止电商进行个性化推荐，新闻媒体，论答平台，视频平台，游戏也会进行个性化推荐，这些信息会帮助企业获取非常大的利润。但此项技术会带来”信息房茧“的缺陷。
+如今，不止电商进行个性化推荐，新闻媒体，论答平台，视频平台，游戏也会进行个性化推荐，这些信息会帮助企业获取非常大的利润。但此项技术会带来”信息房茧“的缺陷。
 
-  现在的个性化推荐会使用实时推荐，使用flink、storm等框架。
+现在的个性化推荐会使用实时推荐，使用flink、storm等框架。
 
-  本项目提供trackinfo的日志，存放在ProjectInput目录中，该日志是某个网站某时刻浏览的所有用户信息。
+本项目提供trackinfo的日志，存放在ProjectInput目录中，该日志是某个网站某时刻浏览的所有用户信息。
 
 ## 二、项目需求
 
