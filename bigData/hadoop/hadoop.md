@@ -1,6 +1,4 @@
-# 第一部分——Hadoop
-
-## 一、HDFS
+## 一、第一部分——HDFS
 
 ### 1.1介绍
 
@@ -3696,7 +3694,7 @@ hadoop jar /home/willhope/JetBrain/DevFile/com.zyx.bigdata/target/com.zyx.bigdat
 
 使用MR进行WordCount统计，需要编写大量的代码，要分别实现map，reduce，driver三大类，并且，在生产环境中运行时，需要将开发项目编译，打包，上传数据到HDFS等等，会非常的繁琐，开发过程无法快速应对业务需求的变化。
 
-因而Hive应运而生，由Facebook开源的，可以**离线批处理**解决海量结构化日志的数据统计问题，是构建在Hadoop之上的数据仓库，可对大数据进行读写。Hive使用类似SQL的写法HQL，可以使关系型数据库的开发人员很容易操作，但Hive的底层支持多种不同的执行引擎，**在1.x时支持MR，在2.x时支持Spark**，此外还可以支持Tez。
+因而Hive应运而生，由Facebook开源的，可以**离线批处理**解决海量结构化日志的数据统计问题，是构建在Hadoop之上的数据仓库工具，可以将结构化的数据文件映射为一张数据库表。Hive使用类似SQL的写法HQL，可以使关系型数据库的开发人员很容易操作，但Hive的底层支持多种不同的执行引擎，**在1.x时支持MR，在2.x时支持Spark**，此外还可以支持Tez。其本质是将SQL转换为MapReduce/Spark的任务进行运算，底层由HDFS来提供数据的存储，说白了hive可以理解为一个将SQL转换为MapReduce/Spark的任务的工具，甚至更进一步可以说hive就是一个MapReduce/Spark Sql的客户端。
 
 为什么要使用Hive？因为简单，容易上手，比MR开容易很多。为超大数据集设计的计算/扩展能力，提供统一元数据管理。Hive数据存放在HDFS上，元数据信息存放在MySQL中（元数据可理解为一个表，存放，表的名字，表的字段，存放在HDFS的位置）。**Hive、Spark SQL、Impala其中任意一个创建的表，其他两者都可以使用，这使得开发人员可以随意更改开发框架。**
 

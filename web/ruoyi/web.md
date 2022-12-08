@@ -408,6 +408,8 @@ public class Consumer02 {
 
 本文使用Ruoyi-Vue集成RabbitMQ，实现死信队列延迟消息。
 
+> 注意： 整合RabbitMQ后，有时候会出现connection refuse的情况，需要重启系统几次
+
 #### （1）添加依赖和配置
 
 ```xml
@@ -419,7 +421,7 @@ public class Consumer02 {
 
 rabbitmq:
     host: 127.0.0.1
-    port: 15672
+    port: 5672
     username: guest
     password: guest	
 ```
@@ -764,308 +766,838 @@ public class DeadLetterQueueConsumer {
 }
 ```
 
-## 三、整合Camunda实现工作流
+## 三、整合Flowable实现工作流
 
-使用Camunda需要安装几个软件，首先要确保JRE是1.8版本以上的，其次在Camunda官网上下载Camunda-bpm-run-7.17.0以及Camunda-modeler-4.9.0。
-
-### 1. 流程部署
-
-#### 1.1 流文件部署文件
-
-```java
-    @0verride
-    public RestfulResponse(Object，CeneralMeta> createDeployment(MultipartFile file) throws IOException（
-        ProcessEngine processEngine=ProcessEngines.getDefaultProcessEngine();
-        RepositoryService repositoryService = processEngine.getRepositoryService();
-        InputStream inputStream_bpmn = file.getInputStream();
-        System.out.println("———-—————-->" + file.getInputStream());
-        Deployment deployment = repositoryService.createDeployment()
-            .addInputStream(file.getOriginalFilename(), inputStream_bpmn)
-            .name(file.getOriginalFilename())
-            .deploy();
-        System.out.println("流程部署id:" + deployment.getId());
-        System.out.println("流程部署名称:" + deployment.getName());
-        return RestfulResponse.condition(true);
-```
-
-#### 1.2 流文件部署文件
-
-```java
-    // 与流程定义和部署对象相关的Service
-    RepositoryService repositoryService = processEngine.getRepositoryService();
-    DeploymentBuilder deploymentBuilder = repositoryService.createDeployment();// 创建一个部署对象
-    deploymentBuilder.name(添加部署名称);// 添加部署的名称
-    deploymentBuilder.addClasspathResource(文件路径到文件名称);// 从classpath的资源加载，一次只能加载一个文件
-    Deployment deployment = deploymentBuilder.deploy();// 完成部署
-    log.info("流程Id:" + deployment.getId());
-    log.info("流程Name:" + deployment.getName());
-```
-
-#### 1.3 压缩包部署文件
-
-```java
-    InputStream inputStream = this.getClass().getClassLoader().getResourceAsStream(压缩包路径);
-    ZipInputStream zipInputStream = new ZipInputStream(inputStream);
-    RepositoryService repositoryService1 = processEngine.getRepositoryService();
-    Deployment deployment = repositoryService1.createDeployment()//
-            .addZipInputStream(zipInputStream).deploy();
-    System.out.println("流程部署id：" + deployment.getId());
-    System.out.println("流程部署名称：" + deployment.getName());
-```
-
-### 2. 流程启动
-
-```java
-    ProcessEngine processEngine=ProcessEngines.getDefaultProcessEngine();
-    RuntimeService runtimeService=processEngine.getRuntimeService();
-    String processDefinitionkey="这里的key指的是流程图定义的key";
-    // 可自定义一下变量，使用map 的形式进行存储
-    Map<String,Object> map = new HashMap<String, Object>();
-    map.put("title",value);
-    // 获取的时候，可以使用下面语句获取对应的value
-    runtimeService.getVariable(task.getExecutionId(),key);
-
-    IdentityService identityService = processEngine.getIdentityService();
-    identityService.setAuthenticatedUserId("发起人用户id");
-
-    ProcessInstance processInstance=runtimeService.startProcessInstanceByKey(ProcessDefinitionKey,BusinessKey,map);
-    System.out.println("流程实例ID："+processInstance.getId());//流程实例ID
-    System.out.println("流程定义ID："+processInstance.getProcessDefinitionId());//流程定义ID
-    System.out.println(processInstance.getBusinessKey());
+### 1.ry-admin下的pom中引入Flowable
 
 ```
+<dependency>
+    <groupId>org.flowable</groupId>
+    <artifactId>flowable-spring-boot-starter</artifactId>
+    <version>6.7.2</version>
+</dependency>
+```
 
-### 3. 查询代办任务
+在IDEA中安装**Flowable BPMN visualizer**插件，在admin的resources中创建processes目录，用来部署后面编写的流程图。这个目录下的流程文件将来会被自动部署。
 
-提示：listPage里的两个参数代表从第几行开始，起始行可为0也就是第一行，第二个参数是需要多少个。
+启动程序后，会自动在数据库中生成对应的表。
+
+### 2.流程部署
+
+#### （1）自动部署方法
+
+在applicaiton.properties中编写如下代码：
+
+```properties
+flowable.check-process-definitions=true
+flowable.process-definition-location-prefix=classpath*:/processes/
+flowable.process-definition-location-suffixes=**.bpmn20.xml,**.bpmn
+logging.level.org.flowable=debug
+```
+
+- `flowable.check-process-definitions`：这个表示是否在项目启动的时候，去检查文件目录是否有对应的流程文件，该属性为 true 表示如果有流程文件就自动部署，false 表示不检查，那么也就不会自动部署。
+- `flowable.process-definition-location-prefix`：这个是流程文件的位置，默认就是 `classpath*:/processes/`，当然开发者也可以进行配置。
+- `flowable.process-definition-location-suffixes`：这个是流程文件的后缀，默认有两个，分别是 `**.bpmn20.xml` 和 `**.bpmn`，当然开发者也可以进行配置。
+
+#### （2）手动部署方法
+
+有的时候，我们的流程可能并不是提前设计好的，而是项目启动之后，手动部署的，例如项目启动成功之后，手动上传一个流程的 XML 文件进行部署，这也是一种比较常见的场景，对于这种情况，我们可以按照如下方式进行部署：
 
 ```java
-    ProcessEngine processEngine=ProcessEngines.getDefaultProcessEngine();
-    TaskService taskService = processEngine.getTaskService();
-    // 定义分页参数，实际上这里并不需要，知识举个列子，因为listPage已经自动完成了分页
-    int i=(pageNum-1)*pageSize ;
-    int i1=pageSize;
-    // 取出任务列表
-    List<Task> list = taskService.createTaskQuery().taskAssignee(assignee).listPage(i,i1);
+@RestController
+public class ProcessDeployController {
 
-    List<TaskLike> taskLikeList = new ArrayList<>();
-    // 统计总数
-    long count = taskService.createTaskQuery().taskAssignee(assignee).count();
-    //count是表示一共有多少条。
-    //page的分页就很清楚，两参一个其实页一个，页最大容量
-    Page<TaskLike> page = new Page<TaskLike>(pageNum, pageSize);
-    RuntimeService runtimeService = processEngine.getRuntimeService();
+    @Autowired
+    RepositoryService repositoryService;
 
-    for (Task task : list) {
-        TaskLike taskLike = new TaskLike();
-        taskLike.setAssignee(task.getAssignee());
-        taskLike.setCreateTime(task.getCreateTime());
-        taskLike.setDescription((String)runtimeService.getVariable(task.getExecutionId(),"title"));
-        taskLike.setExecutionId(task.getExecutionId());
-        taskLike.setProcessDefinitionId(task.getProcessDefinitionId());
-        taskLike.setTaskId(task.getId());
-        taskLike.setTaskName(task.getName());
-        taskLike.setTaskDefinitionKey(task.getTaskDefinitionKey());
-        taskLike.setProcessInstanceId(task.getProcessInstanceId());
-        taskLikeList.add(taskLike);
+    @PostMapping("/deploy")
+    public RespBean deploy(MultipartFile file) throws IOException {
+        DeploymentBuilder deploymentBuilder = repositoryService.createDeployment()
+                .category("javaboy的工作流分类")
+                .name("javaboy的工作流名称")
+                .addInputStream(file.getOriginalFilename(), file.getInputStream())
+                .key("javaboy的工作流key");
+        Deployment deployment = deploymentBuilder
+                .deploy();
+        return RespBean.ok("部署成功",deployment.getId());
+    }
+}
+```
+
+### 3.请假流程
+
+接下来我们在 processes 目录下，新建一个 BPMN 文件（插件装好了就有这个选项了）。我们来画个请假的流程，就叫做 ask_for_leave.bpmn20.xml，注意最后面的 `.bpmn20.xml` 是固定后缀。
+
+首先定义一个流程图，如下图所示：
+
+<img src="../../picture/ask_level.png" />
+
+对应的xml代码如下：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:flowable="http://flowable.org/bpmn" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC" xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI" typeLanguage="http://www.w3.org/2001/XMLSchema" expressionLanguage="http://www.w3.org/1999/XPath" targetNamespace="http://www.flowable.org/processdef">
+  <process id="ask_for_leave" name="ask_for_leave" isExecutable="true">
+    <userTask id="leaveTask" name="请假" flowable:assignee="#{leaveTask}"/>
+    <userTask id="zuzhangTask" name="组长审核" flowable:assignee="#{zuzhangTask}"/>
+    <userTask id="managerTask" name="经理审核" flowable:assignee="#{managerTask}"/>
+    <exclusiveGateway id="managerJudgeTask"/>
+    <exclusiveGateway id="zuzhangJudeTask"/>
+    <endEvent id="endLeave" name="结束"/>
+    <startEvent id="startLeave" name="开始"/>
+    <sequenceFlow id="flowStart" sourceRef="startLeave" targetRef="leaveTask"/>
+    <sequenceFlow id="modeFlow" sourceRef="leaveTask" targetRef="zuzhangTask"/>
+    <sequenceFlow id="zuzhang_go" sourceRef="zuzhangJudeTask" targetRef="managerTask" name="通过">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${checkResult=='通过'}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="zuzhang_reject" sourceRef="zuzhangJudeTask" targetRef="sendMail" name="拒绝">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${checkResult=='拒绝'}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="jugdeFlow" sourceRef="managerTask" targetRef="managerJudgeTask"/>
+    <sequenceFlow id="flowEnd" name="通过" sourceRef="managerJudgeTask" targetRef="endLeave">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${checkResult=='通过'}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="rejectFlow" name="拒绝" sourceRef="managerJudgeTask" targetRef="sendMail">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${checkResult=='拒绝'}]]></conditionExpression>
+    </sequenceFlow>
+    <serviceTask id="sendMail" flowable:exclusive="true" name="发送失败提示" isForCompensation="true" flowable:class="org.javaboy.flowable.AskForLeaveFail"/>
+    <sequenceFlow id="endFlow" sourceRef="sendMail" targetRef="askForLeaveFail"/>
+    <endEvent id="askForLeaveFail" name="请假失败"/>
+    <sequenceFlow id="zuzhangTask_zuzhangJudeTask" sourceRef="zuzhangTask" targetRef="zuzhangJudeTask"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_ask_for_leave.bpmn20">
+    <bpmndi:BPMNPlane bpmnElement="ask_for_leave.bpmn20" id="BPMNPlane_ask_for_leave.bpmn20"></bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
+```
+
+其中，需要关注的是<process>标签中的内容，结合 XML 文件我来和大家解释一下这里涉及到的 Flowable 中的组件，我们来看下：
+
+- `<process>` ：表示一个完整的工作流程。
+- `<startEvent>` ：工作流中起点位置，也就是图中的绿色按钮。
+- `<endEvent>` ：工作流中结束位置，也就是图中的红色按钮。
+- `<userTask>` ：代表一个任务审核节点（组长、经理等角色），这个节点上有一个 `flowable:assignee` 属性，这表示这个节点该由谁来处理，将来在 Java 代码中调用的时候，我们需要指定对应的处理人的 ID 或者其他唯一标记。
+- `<serviceTask>`：这是服务任务，在具体的实现中，这个任务可以做任何事情。
+- `<exclusiveGateway>` ：逻辑判断节点，相当于流程图中的菱形框。
+- `<sequenceFlow>` ：链接各个节点的线条，sourceRef 属性表示线的起始节点，targetRef 属性表示线指向的节点，我们图中的线条都属于这种。
+
+### 3.开发中需要熟悉的概念
+
+- ProcessDefinition
+
+这个最好理解，就是流程的定义，也就相当于规范，每个 ProcessDefinition 都会有一个 id。
+
+- ProcessInstance
+
+这个就是流程的一个实例。简单来说，ProcessDefinition 相当于是类，而 ProcessInstance 则相当于是根据类 new 出来的对象。
+
+- Activity
+
+Activity 是流程标准规范 BPMN2.0 里面的规范，流程中的每一个步骤都是一个 Activity。
+
+- Execution
+
+Execution 的含义是流程的执行线路，通过 Execution 可以获得当前 ProcessInstance 当前执行到哪个 Activity了。
+
+- Task
+
+Task 就是当前要做的工作。
+
+### 4.查看流程执行到哪一步
+
+```java
+package com.ruoyi.web.controller.flow;
+
+import org.flowable.bpmn.model.BpmnModel;
+import org.flowable.engine.*;
+import org.flowable.engine.runtime.Execution;
+import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.image.ProcessDiagramGenerator;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.servlet.http.HttpServletResponse;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.List;
+
+@RestController
+public class HelloFlowableController {
+
+    @RestController
+    public class HelloController {
+
+    @Autowired
+    RuntimeService runtimeService;
+
+    @Autowired
+    TaskService taskService;
+
+    @Autowired
+    RepositoryService repositoryService;
+
+    @Autowired
+    ProcessEngine processEngine;
+
+    @GetMapping("/pic")
+    public void showPic(HttpServletResponse resp, String processId) throws Exception {
+        ProcessInstance pi = runtimeService.createProcessInstanceQuery().processInstanceId(processId).singleResult();
+        if (pi == null) {
+            return;
+        }
+        List<Execution> executions = runtimeService
+                .createExecutionQuery()
+                .processInstanceId(processId)
+                .list();
+
+        List<String> activityIds = new ArrayList<>();
+        List<String> flows = new ArrayList<>();
+        for (Execution exe : executions) {
+            List<String> ids = runtimeService.getActiveActivityIds(exe.getId());
+            activityIds.addAll(ids);
+        }
+
+        /**
+          * 生成流程图
+          */
+        BpmnModel bpmnModel = repositoryService.getBpmnModel(pi.getProcessDefinitionId());
+        ProcessEngineConfiguration engconf = processEngine.getProcessEngineConfiguration();
+        ProcessDiagramGenerator diagramGenerator = engconf.getProcessDiagramGenerator();
+        InputStream in = diagramGenerator.generateDiagram(bpmnModel, "png", activityIds, flows, engconf.getActivityFontName(), engconf.getLabelFontName(), engconf.getAnnotationFontName(), engconf.getClassLoader(), 1.0, false);
+        OutputStream out = null;
+        byte[] buf = new byte[1024];
+        int legth = 0;
+        try {
+            out = resp.getOutputStream();
+            while ((legth = in.read(buf)) != -1) {
+                out.write(buf, 0, legth);
+            }
+        } finally {
+            if (in != null) {
+                in.close();
+            }
+            if (out != null) {
+                out.close();
+            }
+        }
     }
-    page.setRecords(taskLikeList);
-    page.setTotal(count);
+    }
+}
 ```
 
-### 4. 查询已办任务
+### 5.员工发起一个流程
 
 ```java
-    ProcessEngine processEngine=ProcessEngines.getDefaultProcessEngine();
-    RuntimeService runtimeService = processEngine.getRuntimeService();
-    List<HistoricTaskInstance> list1 = processEngine.getHistoryService() // 历史任务Service
-            .createHistoricTaskInstanceQuery() // 创建历史任务实例查询
-            .taskAssignee(assignee) // 指定办理人
-            .finished() // 查询已经完成的任务
-            .listPage(i,i1);
-    long count = processEngine.getHistoryService().createHistoricTaskInstanceQuery().taskAssignee(assignee).finished().count();
-    //count是表示一共多少条。
-    List<TaskLike> taskLikeList = new ArrayList<>();
-    Page<TaskLike> page = new Page<TaskLike>(pageNum, pageSize);
-    for (HistoricTaskInstance hti : list1) {
-        TaskLike taskLike = new TaskLike();//自己创建的任务对象，属性都在下边set里的就不单独摆出来了
-        taskLike.setAssignee(hti.getAssignee());
-        taskLike.setCreateTime(hti.getStartTime());
-        taskLike.setDescription((String)runtimeService.getVariable(hti.getExecutionId(),key));
-        //这个传入参数就是启动时设置map的
-        taskLike.setExecutionId(hti.getExecutionId());
-        taskLike.setProcessDefinitionId(hti.getProcessDefinitionId());
-        taskLike.setTaskId(hti.getId());
-        taskLike.setTaskName(hti.getName());
-        taskLike.setTaskDefinitionKey(hti.getTaskDefinitionKey());
-        taskLike.setProcessInstanceId(hti.getProcessInstanceId());
-        taskLikeList.add(taskLike);
-    }
-    page.setRecords(taskLikeList);
-    page.setTotal(count);
+ String staffId = "1000";
+ // 这里可以与接口对应起来，这里实际上就是从接口处接收到的参数
+ HashMap<String, Object> map = new HashMap<>();
+ map.put("leaveTask", staffId);
+ // 开启一个流程，这里直接使用map将发起人的id填写进去了。也可以通过identityService.setAuthenticatedUserId(staffId);ProcessInstance pi = runtimeService.startProcessInstanceByKey("leave");这两句来发起
+ ProcessInstance processInstance = runtimeService.startProcessInstanceByKey("ask_for_leave", map);
+ runtimeService.setVariable(processInstance.getId(), "name", "javaboy");
+ runtimeService.setVariable(processInstance.getId(), "reason", "休息一下");
+ runtimeService.setVariable(processInstance.getId(), "days", 10);
+ logger.info("创建请假流程 processId：{}", processInstance.getId());
 ```
 
-### 5. 完成任务(或审批某个东西)
+首先由员工发起一个请假流程，map 中存放的 leaveTask 是我们在 XML  流程文件中提前定义好的，提前定义好当前这个任务创建之后，该由谁来处理，这里我们是假设由工号为 1000  的员工来发起这样一个请假流程。
+
+> map.put("leaveTask", staffId); 
+>
+> 实际上对应着
+>
+> <userTask id="leaveTask" name="请假" flowable:assignee="#{leaveTask}"/>
+
+同时，我们还设置了一些额外信息。ask_for_leave 是我们在 XML 文件中定义的一个 process  的名称id。
+
+### 6.将请求提交给组长
+
+```
+<userTask id="leaveTask" name="请假" flowable:assignee="#{leaveTask}"/>
+```
+
+对应Java代码如下：
 
 ```java
-    ProcessEngine processEngine=ProcessEngines.getDefaultProcessEngine();
-    TaskService taskService=processEngine.getTaskService();
-    Task task=taskService.createTaskQuery().taskId(taskId).singleResult();
-    String processInstancesId=task.getProcessInstanceId();
-    IdentityService identityService = processEngine.getIdentityService();
-    identityService.setAuthenticatedUserId(userId); //这里设置的是审批人及意见的userId。
-    taskService.addComment(taskId,processInstancesId,idea);
-    //idea意思是完成时的审批意见，可在Act_Hi_Comment里的massge查询到
-    Map<String,Object> map = new HashMap<>();
-	map.put("条件1",value)//这个map根据bpmn情况定，传入complete方法
-    taskService.complete(taskId);//可多参条件。
+String zuzhangId = "90";
+//员工查找到自己的任务，然后提交给组长审批
+List<Task> list = taskService.createTaskQuery().taskAssignee(staffId).orderByTaskId().desc().list();
+for (Task task : list) {
+    logger.info("任务 ID：{}；任务处理人：{}；任务是否挂起：}", task.getId(), task.getAssignee(), task.isSuspended());
+    Map<String, Object> map = new HashMap<>();
+    //提交给组长的时候，需要指定组长的 id
+    map.put("zuzhangTask", zuzhangId);
+    taskService.complete(task.getId(), map);
+}
 ```
 
-### 6. 查询审批意见
+### 7.UserTask组长审批
+
+```
+<userTask id="zuzhangTask" name="组长审核" flowable:assignee="#{zuzhangTask}"/>
+```
+
+对应Java代码如下：
 
 ```java
-    ProcessEngine processEngine=ProcessEngines.getDefaultProcessEngine();
-    TaskService taskService=processEngine.getTaskService();
-    HistoryService hisService = processEngine.getHistoryService();
-    List<Comment> list=taskService.getTaskComments(taskId);
+List<Task> list = taskService.createTaskQuery().taskAssignee(zuzhangId).orderByTaskId().desc().list();
+    for (Task task : list) {
+        logger.info("组长 {} 在审批 {} 任务", task.getAssignee(), task.getId());
+        Map<String, Object> map = new HashMap<>();
+        
+        //组长审批的时候，如果是同意，需要指定经理的 id
+        map.put("managerTask", managerId);
+        map.put("checkResult", "通过");
+        
+        // 如果是拒绝的话，就不需要指定经理id，也就是不需要进行下一步骤了
+        map.put("checkResult", "拒绝");
+        
+        taskService.complete(task.getId(), map);
+    }
 ```
 
+### 8.userTask经理审批
 
-### 7. 查询这个流程的审批意见
+```
+<userTask id="managerTask" name="经理审核" flowable:assignee="#{managerTask}"/>
+```
+
+对应Java代码如下：
 
 ```java
-    ProcessEngine processEngine=ProcessEngines.getDefaultProcessEngine();
-    HistoryService historyService=processEngine.getHistoryService();
-    TaskService taskService=processEngine.getTaskService();
-    List<Comment> list = new ArrayList();
-    Task task = taskService.createTaskQuery()
-            .taskId(taskId)//使用任务ID查询
-            .singleResult();
-
-    // 流程实例id
-    String processInstanceId = task.getProcessInstanceId();
-    // 使用流程实例ID，查询历史任务，获取历史任务对应的每个任务ID
-    List<HistoricTaskInstance> htiList = historyService.createHistoricTaskInstanceQuery()//历史任务表查询
-        .processInstanceId(processInstanceId)//使用流程实例ID查询
-        .list();
-    // 遍历集合，获取任务id
-    for(HistoricTaskInstance hti:htiList){//任务ID
-        String htaskId = hti.getId();//获取批注信息
-        List taskList = taskService.getTaskComments(htaskId);//对用历史完成后的任务ID                
-        list.addAll(taskList);
-    }
+List<Task> list = taskService.createTaskQuery().taskAssignee(managerId).orderByTaskId().desc().list();
+    for (Task task : list) {
+        logger.info("经理 {} 在审批 {} 任务", task.getAssignee(), task.getId());
+        Map<String, Object> map = new HashMap<>();
+        // 通过
+        map.put("checkResult", "通过");
+        // 拒绝
+        map.put("checkResult", "拒绝");
+        taskService.complete(task.getId(), map);
+    }
 ```
 
-### 8. 查询流程实例
+### 9.serviceTask通知操作
+
+当审批人拒绝后，会进入一个serviceTask中执行相应的操作，在xml中，我们定义了这个服务与Java代码中对应类。例如，该serviceTask对应的java类是org.javaboy.flowable.AskForLeaveFail。
+
+```xml
+<serviceTask id="sendMail" flowable:exclusive="true" name="发送失败提示" isForCompensation="true" flowable:class="org.javaboy.flowable.AskForLeaveFail"/>
+```
+
+对应的Java代码如下所示，首先定义一个AskForLeaveFail类，然后实现JavaDelegate接口，并且实现execute方法。在这个方法里，写一些业务逻辑，通常就是调用站内消息平台，发送用户消息。
 
 ```java
-    ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
-    RepositoryService repositoryService = processEngine.getRepositoryService();
-    // 查询流程定义
-    ProcessDefinitionQuery processDefinitionQuery = repositoryService.createProcessDefinitionQuery();
-    // 遍历查询结果
-    List<ProcessDefinition> list = processDefinitionQuery.processDefinitionKey(ProcessDefinitionKey)
-            .orderByProcessDefinitionVersion().desc().listPage(i,i1);
-    List<DefinitionLike> definitionLikeList = new ArrayList<>();
-    Page<DefinitionLike> page = new Page<DefinitionLike>(pageNum, pageSize);
-    long count =processDefinitionQuery.processDefinitionKey(ProcessDefinitionKey).count();
-    for (ProcessDefinition processDefinition : list) {
-
-        DefinitionLike definitionLike  = new DefinitionLike();
-        definitionLike.setDeploymentId(processDefinition.getDeploymentId());
-        definitionLike.setProcessDefinitionId(processDefinition.getId());
-        definitionLike.setProcessDefinitionName(processDefinition.getName());
-        definitionLike.setProcessDefinitionKey(processDefinition.getKey());
-        definitionLike.setProcessDefinitionVersion(processDefinition.getVersion());
-        definitionLikeList.add(definitionLike);
-    }
-
-    page.setRecords(definitionLikeList);
-    page.setTotal(count);
-
+public class AskForLeaveFail implements JavaDelegate {
+    @Override
+    public void execute(DelegateExecution execution) {
+        System.out.println("请假失败。。。");
+    }
+}
 ```
 
-### 9. 任务驳回到起始点
+### 10.查询已经执行过的流程
 
 ```java
-    ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
-    TaskService taskService = processEngine.getTaskService();
-    HistoryService historyService = processEngine.getHistoryService();
-    RuntimeService runtimeService = processEngine.getRuntimeService();
-    RepositoryService repositoryService = processEngine.getRepositoryService();
-    //获取当前任务，未办理任务id
-    HistoricTaskInstance currTask = historyService.createHistoricTaskInstanceQuery()
-            .taskId(taskId)
-            .singleResult();
-    //获取流程实例
-    ProcessInstance processInstance = runtimeService.createProcessInstanceQuery()
-            .processInstanceId(currTask.getProcessInstanceId())
-            .singleResult();
-    //获取流程定义
-    ProcessDefinitionEntity processDefinitionEntity = (ProcessDefinitionEntity) ((RepositoryServiceImpl) repositoryService)
-            .getDeployedProcessDefinition(currTask.getProcessDefinitionId());
+@Autowired
+HistoryService historyService;
+private static final Logger logger = LoggerFactory.getLogger(HiTest.class);
 
-    ActivityImpl currActivity = (processDefinitionEntity)
-            .findActivity(currTask.getTaskDefinitionKey());
-    //清除当前活动出口
-    List<PvmTransition> originPvmTransitionList = new ArrayList<PvmTransition>();
-    List<PvmTransition> pvmTransitionList = currActivity.getOutgoingTransitions();
-    for (PvmTransition pvmTransition : pvmTransitionList) {
-        originPvmTransitionList.add(pvmTransition);
-    }
-    pvmTransitionList.clear();
-    //查找上一个user task节点
-    List<HistoricActivityInstance> historicActivityInstances = historyService
-            .createHistoricActivityInstanceQuery().activityType("userTask")
-            .processInstanceId(processInstance.getId())
-            .finished()
-            .orderByHistoricActivityInstanceEndTime().asc().list();
-    TransitionImpl transitionImpl = null;
-    if (historicActivityInstances.size() > 0) {
-        ActivityImpl lastActivity = (processDefinitionEntity)
-                .findActivity(historicActivityInstances.get(0).getActivityId());
-        //创建当前任务的新出口
-        transitionImpl = currActivity.createOutgoingTransition(lastActivity.getId());
-        transitionImpl.setDestination(lastActivity);
-    }
-    // 完成任务
-    List<Task> tasks = taskService.createTaskQuery()
-            .processInstanceId(processInstance.getId())
-            .taskDefinitionKey(currTask.getTaskDefinitionKey()).list();
-    for (Task task : tasks) {
-        taskService.complete(task.getId());
-        historyService.deleteHistoricTaskInstance(task.getId());
-    }
-    // 恢复方向
-    currActivity.getOutgoingTransitions().remove(transitionImpl);
-    for (PvmTransition pvmTransition : originPvmTransitionList) {
-        pvmTransitionList.add(pvmTransition);
-    }
+    @Test
+    void test01() {
+        List<HistoricProcessInstance> list = historyService.createHistoricProcessInstanceQuery().list();
+        for (HistoricProcessInstance hi : list) {
+            logger.info("==={},{},{},{},{},{}",hi.getId(),hi.getName(),hi.getStartActivityId(),hi.getStartTime(),hi.getEndActivityId(),hi.getEndTime());
+        }
+    }
 ```
 
-### 10. 查询流程定义
+### 11.查询历史活动
+
+在流程中，活动指的就是流程图中每一个组件，例如start，task以及网关和连线。因此，查询活动会将整个流程图上的内容都查出来。
 
 ```java
-    ProcessEngine processEngine = ProcessEngines.getDefaultProcessEngine();
-    RepositoryService repositoryService = processEngine.getRepositoryService();
-
-    List<ProcessDefinition> list =  repositoryService.createProcessDefinitionQuery().latestVersion().listPage(i, i1);
-    Page<ProcessDefinitionLike> page = new Page<ProcessDefinitionLike>(pageNum, pageSize);
-    long count = repositoryService.createProcessDefinitionQuery().latestVersion().count();
-
-    List<ProcessDefinitionLike> processDefinitionList =new ArrayList<>();
-    for(ProcessDefinition processDefinition:list){
-        ProcessDefinitionLike processDefinitionLike = new ProcessDefinitionLike();
-        processDefinitionLike.setDeploymentId(processDefinition.getDeploymentId());
-        processDefinitionLike.setProcessDefinitionName(processDefinition.getName());
-        processDefinitionLike.setProcessDefinitionVersion(processDefinition.getVersion());       
-        processDefinitionLike.setProcessDefinitionDescription(processDefinition.getDescription())；
-        processDefinitionLike.setProcessDefinitionKey(processDefinition.getKey());
-        processDefinitionLike.setProcessDefinitionId(processDefinition.getId());
-        processDefinitionLike.setProcessDefinitionResourceName(processDefinition.getResourceName());
-        processDefinitionList.add(processDefinitionLike);
-    }
-    page.setRecords(processDefinitionList);
-    page.setTotal(count);
-
+List<HistoricActivityInstance> list = historyService.createHistoricActivityInstanceQuery().orderByHistoricActivityInstanceStartTime().asc().list();
+    for (HistoricActivityInstance hai : list) {
+        logger.info("流程ID：{}，活动名称：{}，活动ID:{}，活动处理人：{}",hai.getProcessInstanceId(),hai.getActivityName(),hai.getActivityId(),hai.getAssignee());
+    }
 ```
+
+### 12.查询历史任务
+
+任务，也就是需要进行审批的节点，仅仅只有Task。
+
+```java
+    List<HistoricTaskInstance> list = historyService.createHistoricTaskInstanceQuery().orderByHistoricTaskInstanceStartTime().asc().list();
+    for (HistoricTaskInstance hti : list) {
+        logger.info("流程ID：{}，Task 开始时间：{}，Task 结束时间:{}，Task 处理人：{}",hti.getProcessInstanceId(),hti.getCreateTime(),hti.getEndTime(),hti.getAssignee());
+    }
+```
+
+### 13.将流程挂起
+
+将流程挂起以后，就不能再使用了。需要重新激活才能使用。
+
+流程挂起后，流程的执行实例会被挂起。流程的 Task会 被挂起。
+
+```java
+// 查询某个流程是否被挂起
+String id = processDefinition.getId();
+boolean suspended = repositoryService.isProcessDefinitionSuspended(id);
+
+// 将流程挂起
+List<ProcessDefinition> list = repositoryService.createProcessDefinitionQuery().list();
+for (ProcessDefinition pd : list) {
+    repositoryService.suspendProcessDefinitionById(pd.getId());
+    // 挂起函数设置参数，第二个参数 true 表示是否要挂起这个流程定义对应的所有的流程实例，true 表示挂起。第三个参数 null 表示流程挂起的具体时间，如果该参数为 null，则流程会被立马挂起，如果该参数是一个具体的日期，则到期之后流程才会被挂起，但是这个需要 job executor。
+    repositoryService.suspendProcessDefinitionById(pd.getId(), true, null);
+}
+```
+
+### 14.将流程激活
+
+```java
+List<ProcessDefinition> list = repositoryService.createProcessDefinitionQuery().list();
+for (ProcessDefinition pd : list) {
+	repositoryService.activateProcessDefinitionById(pd.getId());
+    // 流程激活，同样可以设置时间
+    repositoryService.activateProcessDefinitionById(pd.getId(), true, null);
+}
+```
+
+### 15.表单创建
+
+Flowable可以将表单创建在xml中，如下代码所示：
+
+```xml
+<extensionElements>
+      <flowable:formProperty id="startTime" name="请假开始时间" type="date" datePattern="yyyy-MM-dd HH:mm" required="true"></flowable:formProperty>
+      <flowable:formProperty id="endTime" name="请假结束时间" type="date" datePattern="yyyy-MM-dd HH:mm" required="true"></flowable:formProperty>
+      <flowable:formProperty id="reason" name="请假理由" type="string" required="true"></flowable:formProperty>
+      <flowable:formProperty id="days" name="请假天数" type="long" required="true"></flowable:formProperty>
+</extensionElements>
+```
+
+也可以使用HTML床架表单，但是在当今前后端分离的情况下，使用JSON是比较方便的，尤其是后端采用的都是SpringBoot的情况下。
+
+首先在properties中定义表单的存放目录
+
+```properties
+# 默认的表单文件后缀
+flowable.form.resource-suffixes=**.form
+# 默认的表单文件位置
+flowable.form.resource-location=classpath*:/forms/
+```
+
+还是以我们的请假请求为例，我来创建一个表单文件，文件名为 `ask_level.form`，如下：
+
+```json
+{
+    "key": "application_form.form",
+    "name": "经理审批表单",
+    "fields": [
+        {
+            "id": "days",
+            "name": "请假天数",
+            "type": "string",
+            "required": true,
+            "placeholder": "empty"
+        },
+        {
+            "id": "reason",
+            "name": "请假原因",
+            "type": "string",
+            "required": true,
+            "placeholder": "empty"
+        },
+        {
+            "id": "startTime",
+            "name": "开始时间",
+            "type": "date",
+            "required": true,
+            "placeholder": "empty"
+        },
+        {
+            "id": "endTime",
+            "name": "结束时间",
+            "type": "date",
+            "required": true,
+            "placeholder": "empty"
+        }
+    ]
+}
+```
+
+这个 key 就是表单的唯一标识符，当有多个表单的时候，这个该值不可以重复，name 是表单是名称，fields 则定义了具体的字段，这里一共有四个。
+
+在每一个 filed 的定义中，id 表示字段名，name 则是字段的中文名称，type 表示字段的类型，require  则表示这个字段是否是必填字段，placeholder 不用多说，跟我们日常使用的 input 标签中的 placeholder 的含义一致。
+
+## 四、 整合WebSocket
+
+### 1.maven引入
+
+```xml
+<!-- SpringBoot Websocket -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-websocket</artifactId>
+</dependency>
+```
+
+### 2.设置WebSocketConfig类
+
+```java
+package com.ruoyi.framework.websocket;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.server.standard.ServerEndpointExporter;
+
+/**
+ * websocket 配置
+ *
+ * @author ruoyi
+ */
+@Configuration
+public class WebSocketConfig implements WebSocketMessageBrokerConfigurer
+{
+    @Bean
+    public ServerEndpointExporter serverEndpointExporter()
+    {
+        return new ServerEndpointExporter();
+    }
+}
+```
+
+### 3.定义WebSocketServer类。
+
+使用@ServerEndpoint注解进行描述。该注解主要是将目前的类定义成一个websocket服务器端,，注解的值将被用于监听用户连接的终端访问URL地址，客户端可以通过这个URL来连接到WebSocket服务器端。
+
+```java
+package com.ruoyi.framework.websocket;
+
+import cn.hutool.json.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.ruoyi.common.utils.StringUtils;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringEscapeUtils;
+import org.springframework.stereotype.Component;
+
+import javax.websocket.*;
+import javax.websocket.server.PathParam;
+import javax.websocket.server.ServerEndpoint;
+import java.io.IOException;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * @author 1
+ */
+@ServerEndpoint("/ws/message/{userName}")
+@Component
+@Slf4j
+public class WebSocketServer {
+
+    /**
+     * 静态变量，用来记录当前在线连接数。应该把它设计成线程安全的。
+     */
+    private static int onlineCount = 0;
+    /**
+     * concurrent包的线程安全Set，用来存放每个客户端对应的MyWebSocket对象。
+     */
+    private static ConcurrentHashMap<String, WebSocketServer> webSocketMap = new ConcurrentHashMap<>();
+    /**
+     * 与某个客户端的连接会话，需要通过它来给客户端发送数据
+     */
+    private Session session;
+    /**
+     * 接收userId
+     */
+    private String userName = "";
+
+
+    /**
+     * 连接建立成功调用的方法
+     */
+    @OnOpen
+    public void onOpen(Session session, @PathParam("userName") String userName) {
+        this.session = session;
+        this.userName = userName;
+        if (webSocketMap.containsKey(userName)) {
+            webSocketMap.remove(userName);
+            webSocketMap.put(userName, this);
+            //加入set中
+        } else {
+            webSocketMap.put(userName, this);
+            //加入set中
+            addOnlineCount();
+            //在线数加1
+        }
+
+        log.info("用户连接:" + userName + ",当前在线人数为:" + getOnlineCount());
+
+        try {
+            sendMessage("来自后台的反馈：连接成功");
+        } catch (IOException e) {
+            log.error("用户:" + userName + ",网络异常!!!!!!");
+        }
+    }
+
+    /**
+     * 连接关闭调用的方法
+     */
+    @OnClose
+    public void onClose() {
+        if (webSocketMap.containsKey(userName)) {
+            webSocketMap.remove(userName);
+            //从set中删除
+            subOnlineCount();
+        }
+        log.info("====================================================");
+        log.info("用户退出:" + userName + ",当前在线人数为:" + getOnlineCount());
+    }
+
+    /**
+     * 收到客户端消息后调用的方法
+     *
+     * @param message 客户端发送过来的消息
+     */
+    @OnMessage
+    public void onMessage(String message, Session session) {
+        log.info("收到用户消息:" + userName + ",报文:" + message);
+        //可以群发消息
+        //消息保存到数据库、redis
+        if (StringUtils.isNotBlank(message)) {
+            try {
+                log.info(message);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * @param session
+     * @param error
+     */
+    @OnError
+    public void onError(Session session, Throwable error) {
+        log.error("用户错误:" + this.userName + ",原因:" + error.getMessage());
+        error.printStackTrace();
+    }
+
+    /**
+     * 实现服务器主动推送
+     */
+    public synchronized void sendMessage(String message) throws IOException {
+        this.session.getBasicRemote().sendText(message);
+    }
+
+    public synchronized void sendObjectMessage(Object object) throws EncodeException, IOException {
+        this.session.getBasicRemote().sendObject(object);
+    }
+
+
+    /**
+     * 发送自定义消息
+     */
+    public static void sendInfo(String message, @PathParam("userName") String userName) throws IOException {
+        log.info("发送消息到:" + userName + "，报文:" + message);
+        if (StringUtils.isNotBlank(userName) && webSocketMap.containsKey(userName)) {
+            webSocketMap.get(userName).sendMessage(message);
+        } else {
+            log.error("用户" + userName + ",不在线！");
+        }
+    }
+
+    /**
+     * 发送温度消息
+     * @param parse1
+     * @param parse2
+     * @param parse3
+     */
+    public static void sendTempInfo(Object parse1, Object parse2, Object parse3, @PathParam("userName") String userName) throws EncodeException, IOException {
+
+        if (StringUtils.isNotBlank(userName) && webSocketMap.containsKey(userName)) {
+            webSocketMap.get(userName).sendTempInfoMessage(parse1, parse2, parse3);
+        } else {
+            log.error("用户" + userName + ",不在线！");
+        }
+    }
+
+    private void sendTempInfoMessage(Object parse1, Object parse2, Object parse3) throws EncodeException, IOException{
+        JSONObject result = new JSONObject();
+        result.put("message", "温度曲线数据");
+        result.put("1", parse1);
+        result.put("2", parse2);
+        result.put("3", parse3);
+        this.session.getBasicRemote().sendText(result.toString());
+    }
+
+
+    /**
+     * 发送给对象消息
+     *
+     * @throws IOException
+     */
+    public static void sendObjectInfo(Object object, @PathParam("userName") String userName) throws IOException, EncodeException {
+        log.info("发送消息到:" + userName + "，报文:" + object.toString());
+        if (StringUtils.isNotBlank(userName) && webSocketMap.containsKey(userName)) {
+            webSocketMap.get(userName).sendObjectMessage(object);
+        } else {
+            log.error("用户" + userName + ",不在线！");
+        }
+    }
+
+    public static synchronized int getOnlineCount() {
+        return onlineCount;
+    }
+
+    public static synchronized void addOnlineCount() {
+        WebSocketServer.onlineCount++;
+    }
+
+    public static synchronized void subOnlineCount() {
+        WebSocketServer.onlineCount--;
+    }
+}
+```
+
+### 4.前端代码
+
+```js
+<template>
+</template>
+
+<script>
+export default {
+  name: "WebSocket",
+  data() {
+    return {
+      // ws是否启动
+      wsIsRun: false,
+      // 定义ws对象
+      webSocket: null,
+      // ws请求链接（类似于ws后台地址）
+      ws: '',
+      // ws定时器
+      wsTimer: null,
+      // 获取到的实时数据
+      getCurrentNumber: {}
+    }
+  },
+  async mounted() {
+    this.wsIsRun = true
+    this.wsInit()
+  },
+  destroyed() {
+    this.wsDestroy()
+  },
+  methods: {
+    sendDataToServer() {
+      if (this.webSocket.readyState === 1) {
+        this.webSocket.send('来自前端的数据')
+      } else {
+        throw Error('服务未连接')
+      }
+    },
+    /**
+     * 初始化ws
+     */
+    wsInit() {
+      const wsuri = process.env.VUE_APP_WEBSOCKET_API + '/ws/message/' + this.$store.state.user.name
+      this.ws = wsuri
+      if (!this.wsIsRun) return
+      // 销毁ws
+      this.wsDestroy()
+      // 初始化ws
+      this.webSocket = new WebSocket(this.ws)
+      // ws连接建立时触发
+      this.webSocket.addEventListener('open', this.wsOpenHanler)
+      // ws服务端给客户端推送消息
+      this.webSocket.addEventListener('message', this.wsMessageHanler)
+      // ws通信发生错误时触发
+      this.webSocket.addEventListener('error', this.wsErrorHanler)
+      // ws关闭时触发
+      this.webSocket.addEventListener('close', this.wsCloseHanler)
+
+      // 检查ws连接状态,readyState值为0表示尚未连接，1表示建立连接，2正在关闭连接，3已经关闭或无法打开
+      clearInterval(this.wsTimer)
+      this.wsTimer = setInterval(() => {
+        if (this.webSocket.readyState === 1) {
+          clearInterval(this.wsTimer)
+        } else {
+          console.log('ws建立连接失败')
+          this.wsInit()
+        }
+      }, 3000)
+
+    },
+    /**
+     * 连接成功
+     * @param event
+     */
+    wsOpenHanler(event) {
+      console.log('ws建立连接成功')
+    },
+
+    /**
+     * 从后端接收数据
+     * @param e
+     */
+    wsMessageHanler(e) {
+      // console.log('wsMessageHanler')
+      // console.log(e)
+      //子组件传父组件数据
+      this.$emit("childFnGetParent",e)
+
+      this.getCurrentNumber = JSON.stringify(e.data)
+      // console.log(this.getCurrentNumber)
+    },
+    /**
+     * ws通信发生错误
+     */
+    wsErrorHanler(event) {
+      console.log(event, '通信发生错误')
+      this.wsInit()
+    },
+    /**
+     * ws关闭
+     */
+    wsCloseHanler(event) {
+      console.log(event, 'ws关闭')
+      this.wsInit()
+    },
+    /**
+     * 销毁ws
+     */
+    wsDestroy() {
+      if (this.webSocket !== null) {
+        this.webSocket.removeEventListener('open', this.wsOpenHanler)
+        this.webSocket.removeEventListener('message', this.wsMessageHanler)
+        this.webSocket.removeEventListener('error', this.wsErrorHanler)
+        this.webSocket.removeEventListener('close', this.wsCloseHanler)
+        this.webSocket.close()
+        this.webSocket = null
+        clearInterval(this.wsTimer)
+      }
+    },
+  }
+}
+</script>
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

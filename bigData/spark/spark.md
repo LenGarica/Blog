@@ -1,14 +1,8 @@
-` 注意： `
+# 第一部分——Spark 基础
 
-本项目分为Java版本和Scala版本。在学习的时候使用Scala，因为企业生产中都是使用Java来编写的，因此之后用Java进行重构。
+## 一、Spark产生的背景
 
-本项目中所使用的处理文件，都在data目录中，注意在执行程序时，记得修改路径。所有的代码，都在各自标题对应的英文文件夹中。
-
-# 第一部分——Spark及生态圈概述
-
-## 一、产生的背景
-
-MapReduce局限性：代码非常繁琐，只能支持map和reduce方法，执行效率低下。map处理完后的数据回写到磁盘上，reduce再从磁盘上把数据拉取过来，因此执行效率低下。map和reduce都会对应一个jvm，因此作业量大，则线程开销非常庞大。不适合迭代多次，交互感很低，不支持流式处理。
+MapReduce局限性：代码非常繁琐，只能支持map和reduce方法，执行效率低下。map处理完后的数据回写到磁盘上，reduce再从磁盘上把数据拉取过来，因此执行效率低下。map和reduce都会对应一个jvm，因此作业量大，则线程开销非常庞大。不适合迭代多次，交互感很低，不支持流式处理。虽然 MapReduce 提供了对数据访问和计算的抽象，但是对于数据的复用就是简单的将中间数据写到一个稳定的文件系统中(例如  HDFS)，所以会产生数据的复制备份，磁盘的 I/O 以及数据的序列化，所以在遇到需要在多个计算之间复用中间结果的操作时效率就会非常的低。
 
 在hadoop上框架多样化，每个框架各干各自的事：批处理：MapReduce、Hive、Pig  流式处理：Strom、Jstrom  交互式计算：Impala
 
@@ -50,11 +44,18 @@ Spark Graphx：图形计算
 
 ## 四、Spark和Hadoop的对比
 
-mapreduce 读 – 处理 - 写磁盘 -- 读 - 处理 - 写
+|   对比类型   |                 Hadoop                 | Spark                                                     |
+| :----------: | :------------------------------------: | --------------------------------------------------------- |
+|     类型     |  分布式基础平台, 包含计算, 存储, 调度  | 分布式计算工具                                            |
+|     场景     |         大规模数据集上的批处理         | 迭代计算, 交互式计算, 流计算                              |
+|     价格     |           对机器要求低, 便宜           | 对内存有要求, 相对较贵                                    |
+|   编程范式   | Map+Reduce, API 较为底层, 算法适应性差 | RDD 组成 DAG 有向无环图, API 较为顶层, 方便使用           |
+| 数据存储结构 |  读 – 处理 - 写磁盘 - 读 - 处理 - 写   | 读 - 处理 - 写内存 - 读 - 处理 -（需要的时候）写磁盘 - 写 |
+|   运行方式   |    Task 以进程方式维护, 任务启动慢     | Task 以线程方式维护, 任务启动快                           |
 
-spark     读 - 处理 - 写内存　-- 读　-- 处理  --（需要的时候）写磁盘 - 写
+Spark 是在借鉴了 MapReduce 之上发展而来的，继承了其分布式并行计算的优点并改进了 MapReduce 明显的缺陷，尽管 Spark 相对于 Hadoop 而言具有较大优势，但 Spark 并不能完全替代 Hadoop，Spark 主要用于替代 Hadoop  中的 MapReduce 计算模型。存储依然可以使用 HDFS，但是中间结果可以存放在内存中；调度可以使用 Spark  内置的，也可以使用更成熟的调度系统 YARN 等。
 
-Spark 是在借鉴了 MapReduce 之上发展而来的，继承了其分布式并行计算的优点并改进了 MapReduce 明显的缺陷，（spark 与 hadoop 的差异）具体如下：
+Spark 与 Hadoop 的差异具体如下：
 
 首先，Spark 把中间数据放到内存中，迭代运算效率高。MapReduce 中计算结果需要落地，保存到磁盘上，这样势必会影响整体速度，而 Spark 支持 DAG 图（有向无环图）的分布式并行计算的编程框架，减少了迭代过程中数据的落地，提高了处理效率。（延迟加载）
 
@@ -62,14 +63,14 @@ Spark 是在借鉴了 MapReduce 之上发展而来的，继承了其分布式并
 
 最后，Spark 更加通用。mapreduce 只提供了 Map 和 Reduce 两种操作，Spark 提供的数据集操作类型有很多，大致分为：Transformations 和 Actions 两大类。Transformations包括 Map、Filter、FlatMap、Sample、GroupByKey、ReduceByKey、Union、Join、Cogroup、MapValues、Sort 等多种操作类型，同时还提供 Count, Actions 包括 Collect、Reduce、Lookup 和 Save 等操作
 
-总结：
+**Spark的特点：**
 
-    1. Spark 是 MapReduce 的替代方案，而且兼容 HDFS、Hive，可融入 Hadoop 的生态系统，以弥补 MapReduce 的不足。
-    2. 使用先进的 DAG 调度程序，查询优化器和物理执行引擎，以实现性能上的保证；
-    3. 多语言支持，目前支持的有 Java，Scala，Python 和 R,提供了 80 多个高级 API，可以轻松地构建应用程序；
-    4. 支持批处理，流处理和复杂的业务分析；丰富的类库支持：包括 SQL，MLlib，GraphX 和 Spark Streaming 等库，并且可以将它们无缝地进行组合；
-    5. 丰富的部署模式：支持本地模式和自带的集群模式，也支持在 Hadoop，Mesos，Kubernetes 上运行；
-    6. 多数据源支持：支持访问 HDFS，Alluxio，Cassandra，HBase，Hive 以及数百个其他数据源中的数据
+1. Spark 是 MapReduce 的替代方案，而且兼容 HDFS、Hive，可融入 Hadoop 的生态系统，以弥补 MapReduce 的不足。
+2. 使用先进的 DAG 调度程序，查询优化器和物理执行引擎，以实现性能上的保证；
+3. 多语言支持，目前支持的有 Java，Scala，Python 和 R,提供了 80 多个高级 API，可以轻松地构建应用程序；
+4. **Spark 可以用于批处理、交互式查询(Spark SQL)、实时流处理(Spark Streaming)、机器学习(Spark MLlib)和图计算(GraphX)**。这些不同类型的处理都可以在同一个应用中无缝使用；
+5. 丰富的部署模式：支持本地模式和自带的集群模式，也支持在 Hadoop，Mesos，Kubernetes 上运行；
+6. 多数据源支持：支持访问 HDFS，Alluxio，Cassandra，HBase，Hive 以及数百个其他数据源中的数据
 
 <img src="../../picture/future-of-spark.png"/>
 
@@ -89,11 +90,21 @@ Spark 是在借鉴了 MapReduce 之上发展而来的，继承了其分布式并
 
 **执行过程**：
 
-1. 用户程序创建 SparkContext 后，它会连接到集群资源管理器，集群资源管理器会为用户程序分配计算资源，并启动 Executor；
+1. 用户程序创建 Spark Context 后，它会连接到集群资源管理器，集群资源管理器会为用户程序分配计算资源，并启动 Executor；
 2. Dirver 将计算程序划分为不同的执行阶段和多个 Task，之后将 Task 发送给 Executor；
 3. Executor 负责执行 Task，并将执行状态汇报给 Driver，同时也会将当前节点资源的使用情况汇报给集群资源管理器。
 
-# 第二部分——Spark SQL
+# 第二部分——Spark Core
+
+## 一、为什么要RDD
+
+在许多迭代式算法(比如机器学习、图算法等)和交互式数据挖掘中，不同计算阶段之间会重用中间结果，即一个阶段的输出结果会作为下一个阶段的输入。但是，之前的 MapReduce 框架采用非循环式的数据流模型，把中间结果写入到 HDFS 中，带来了大量的数据复制、磁盘 IO  和序列化开销。且这些框架只能支持一些特定的计算模式(map/reduce)，并没有提供一种通用的数据抽象。
+
+RDD(Resilient Distributed Dataset)叫做弹性分布式数据集，是 Spark 中最基本的数据抽象，代表一个不可变、可分区、里面的元素可并行计算的集合。 
+
+
+
+# 第三部分——Spark SQL
 
 ## 一、Spark SQL的产生
 
