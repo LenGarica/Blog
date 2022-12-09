@@ -1236,6 +1236,56 @@ flowable.form.resource-location=classpath*:/forms/
 
 ## 四、 整合WebSocket
 
+### 2.WebSocket和Socket通信
+
+WebSocket是即时通信的一种。实现即时通讯主要有四种方式，它们分别是：短轮询、长轮询(comet)、长连接(SSE)、WebSocket。
+
+- 它们大体可以分为两类，一种是在HTTP基础上实现的，包括短轮询、comet和SSE；
+- 另一种不是在HTTP基础上实现是，即WebSocket。
+
+下面分别介绍一下这四种轮询方式，以及它们各自的优缺点。
+
+#### 2.1 ajax短轮询
+
+短轮询的基本思路就是浏览器每隔一段时间向服务器发送http请求，服务器端在收到请求后，不论是否有数据更新，都直接进行响应。
+
+#### 2.2 ajax comet -长轮询
+
+comet 指的是，当服务器收到客户端发来的请求后，不会直接进行响应，而是先将这个请求挂起，然后判断服务器端数据是否有更新。如果有更新，则进行响应，如果一直没有数据，则到达一定的时间限制（服务器端设置）后关闭连接。明显减少了很多不必要的http请求次数，相比之下节约了资源。长轮询的缺点在于，连接挂起也会导致资源的浪费
+
+#### 2.3 SSE
+
+SSE （ Server-sent Events ）是 WebSocket 的一种轻量代替方案，使用 HTTP 协议。严格地说，HTTP 协议是没有办法做服务器推送的，但是当服务器向客户端声明接下来要发送流信息时，客户端就会保持连接打开，SSE 使用的就是这种原理。它可以允许服务推送数据到客户端，不需要客户端发送请求，可以实现只要服务器端数据有更新，就可以马上发送到客户端。
+
+SSE的优势很明显，它不需要建立或保持大量的客户端发往服务器端的请求，节约了很多资源，提升应用性能SSE的实现非常简单，并且不需要依赖其他插件。(不支持IE浏览器，单向通道)。
+
+SSE的缺点是单向通道，只能服务器向客户端发送消息，如果客户端需要向服务器发送消息，则需要一个新的 HTTP 请求。 这对比 WebSocket  的双工通道来说，会有更大的开销。这么一来的话就会存在一个「什么时候才需要关心这个差异？」的问题，如果平均每秒会向服务器发送一次消息的话，那应该选择 WebSocket。如果一分钟仅 5 - 6 次的话，其实这个差异并不大。
+
+#### 2.4 WebSocket
+
+HTML5 定义的 WebSocket 协议，WebSocket 是独立的、创建在 TCP 上的协议，与传统的http协议不同，该协议可以实现服务器与客户端之间全双工通信。
+
+简单来说，首先需要在客户端和服务器端建立起一个连接，这部分需要http。连接一旦建立，客户端和服务器端就处于平等的地位，可以相互发送数据，不存在请求和响应的区别。它能更好的节省服务器资源和带宽，并且能够更实时地进行通讯.
+
+#### 2.5 Socket 是什么
+
+##### Unix 中的 Socket
+
+操作系统中也有使用到 Socket 这个概念用来进行进程间通信，它和通常说的基于 TCP/IP 的 Socket 概念十分相似，代表了在操作系统中传输数据的两方，只是它不再基于网络协议，而是操作系统本身的文件系统。
+
+##### 网络中的 Socket
+
+Socket 是对 TCP/IP 的封装；HTTP 是轿车，提供了封装或者显示数据的具体形式；Socket 是发动机，提供了网络通信的能力。在 Unix 一切皆文件哲学的思想下，Socket 是一种"打开—读/写—关闭"模式的实现，服务器和客户端各自维护一个"文件"，在建立连接打开后，可以向自己文件写入内容供对方读取或者读取对方内容，通讯结束时关闭文件。所以如果你想基于 TCP/IP 来构建服务，那么 Socket API 可能就是你会接触到的API。
+
+#### 2.6 WebSocket 与 Socket 的区别
+
+正如如上所说：
+
+1. Socket 是传输控制层的接口。用户可以通过 Socket 来操作底层 TCP/IP 协议族通信。
+2. WebSocket 是一个完整应用层协议。
+3. Socket 更灵活，WebSocket 更易用。
+4. 两者都能做即时通讯
+
 ### 1.maven引入
 
 ```xml
@@ -1589,7 +1639,623 @@ export default {
 </script>
 ```
 
+## 五、大文件上传
 
+文件上传是一个老生常谈的话题了，在文件相对比较小的情况下，可以直接把文件转化为字节流上传到服务器，但在文件比较大的情况下，用普通的方式进行上传，这可不是一个好的办法，毕竟很少有人会忍受，当文件上传到一半中断后，继续上传却只能重头开始上传，这种让人不爽的体验。那有没有比较好的上传体验呢，答案有的，就是下边要介绍的几种上传方式
+
+### 5.1 秒传
+
+#### 1、什么是秒传
+
+通俗的说，你把要上传的东西上传，服务器会先做MD5校验，如果服务器上有一样的东西，它就直接给你个新地址，其实你下载的都是服务器上的同一个文件，想要不秒传，其实只要让MD5改变，就是对文件本身做一下修改（改名字不行），例如一个文本文件，你多加几个字，MD5就变了，就不会秒传了.
+
+#### 2、本文实现的秒传核心逻辑
+
+a、利用redis的set方法存放文件上传状态，其中key为文件上传的md5，value为是否上传完成的标志位，
+
+b、当标志位true为上传已经完成，此时如果有相同文件上传，则进入秒传逻辑。如果标志位为false，则说明还没上传完成，此时需要在调用set的方法，保存块号文件记录的路径，其中key为上传文件md5加一个固定前缀，value为块号文件记录路径
+
+### 5.2 分片上传
+
+#### 1.什么是分片上传
+
+分片上传，就是将所要上传的文件，按照一定的大小，将整个文件分隔成多个数据块（我们称之为Part）来进行分别上传，上传完之后再由服务端对所有上传的文件进行汇总整合成原始的文件。
+
+#### 2.分片上传的场景
+
+1.大文件上传
+
+2.网络环境环境不好，存在需要重传风险的场景
+
+### 5.3 断点续传
+
+#### 1、什么是断点续传
+
+断点续传是在下载或上传时，将下载或上传任务（一个文件或一个压缩包）人为的划分为几个部分，每一个部分采用一个线程进行上传或下载，如果碰到网络故障，可以从已经上传或下载的部分开始继续上传或者下载未完成的部分，而没有必要从头开始上传或者下载。本文的断点续传主要是针对断点上传场景。
+
+#### 2、应用场景
+
+断点续传可以看成是分片上传的一个衍生，因此可以使用分片上传的场景，都可以使用断点续传。
+
+#### 3、实现断点续传的核心逻辑
+
+在分片上传的过程中，如果因为系统崩溃或者网络中断等异常因素导致上传中断，这时候客户端需要记录上传的进度。在之后支持再次上传时，可以继续从上次上传中断的地方进行继续上传。
+
+为了避免客户端在上传之后的进度数据被删除而导致重新开始从头上传的问题，服务端也可以提供相应的接口便于客户端对已经上传的分片数据进行查询，从而使客户端知道已经上传的分片数据，从而从下一个分片数据开始继续上传。
+
+#### 4、实现流程步骤
+
+a、方案一，常规步骤
+
+- 将需要上传的文件按照一定的分割规则，分割成相同大小的数据块；
+- 初始化一个分片上传任务，返回本次分片上传唯一标识；
+- 按照一定的策略（串行或并行）发送各个分片数据块；
+- 发送完成后，服务端根据判断数据上传是否完整，如果完整，则进行数据块合成得到原始文件。
+
+b、方案二、本文实现的步骤
+
+- 前端（客户端）需要根据固定大小对文件进行分片，请求后端（服务端）时要带上分片序号和大小
+- 服务端创建conf文件用来记录分块位置，conf文件长度为总分片数，每上传一个分块即向conf文件中写入一个127，那么没上传的位置就是默认的0,已上传的就是Byte.MAX_VALUE 127（这步是实现断点续传和秒传的核心步骤）
+- 服务器按照请求数据中给的分片序号和每片分块大小（分片大小是固定且一样的）算出开始位置，与读取到的文件片段数据，写入文件。
+
+#### 5、分片上传/断点上传代码实现
+
+a、前端采用百度提供的webuploader的插件，进行分片。因本文主要介绍服务端代码实现，webuploader如何进行分片。
+
+b、后端用两种方式实现文件写入，一种是用RandomAccessFile，如果对RandomAccessFile不熟悉的朋友，可以查看如下链接:
+
+> Java除了File类之外，还提供了专门处理文件的类，即RandomAccessFile（随机访问文件）类。该类是Java语言中功能最为丰富的文件访问类，它提供了众多的文件访问方法。RandomAccessFile类支持“随机访问”方式，这里“随机”是指可以跳转到文件的任意位置处读写数据。在访问一个文件的时候，不必把文件从头读到尾，而是希望像访问一个数据库一样“随心所欲”地访问一个文件的某个部分，这时使用RandomAccessFile类就是最佳选择。
+>
+> RandomAccessFile对象类有个位置指示器，指向当前读写处的位置，当前读写n个字节后，文件指示器将指向这n个字节后面的下一个字节处。刚打开文件时，文件指示器指向文件的开头处，可以移动文件指示器到新的位置，随后的读写操作将从新的位置开始。RandomAccessFile类在数据等长记录格式文件的随机（相对顺序而言）读取时有很大的优势，但该类仅限于操作文件，不能访问其他的I/O设备，如网络、内存映像等。RandomAccessFile类的构造方法如下所示：
+>
+>     RandomAccessFile(File file ,  String mode)
+>
+> //创建随机存储文件流，文件属性由参数File对象指定
+>
+>     RandomAccessFile(String name ,  String mode)
+>
+> //创建随机存储文件流，文件名由参数name指定
+>
+> 这两个构造方法均涉及到一个String类型的参数mode，它决定随机存储文件流的操作模式，其中mode值及对应的含义如下：
+>
+>     “r”：以只读的方式打开，调用该对象的任何write（写）方法都会导致IOException异常
+>     “rw”：以读、写方式打开，支持文件的读取或写入。若文件不存在，则创建之。
+>     “rws”：以读、写方式打开，与“rw”不同的是，还要对文件内容的每次更新都同步更新到潜在的存储设备中去。这里的“s”表示synchronous（同步）的意思
+>     “rwd”：以读、写方式打开，与“rw”不同的是，还要对文件内容的每次更新都同步更新到潜在的存储设备中去。使用“rwd”模式仅要求将文件的内容更新到存储设备中，而使用“rws”模式除了更新文件的内容，还要更新文件的元数据（metadata），因此至少要求1次低级别的I/O操作
+>
+> 示例：
+>
+>     import java.io.RandomAccessFile;
+>      
+>     /**
+>      * Created by 1 on 2018/8/20.
+>      */
+>      
+>     public class RandomFileTest {
+>         public static void main(String[] args) throws Exception{
+>             Employee e1 = new Employee("zhangsan" , 23);
+>             Employee e2 = new Employee("lisi" , 24);
+>             Employee e3 = new Employee("wangwu" , 25);
+>             RandomAccessFile ra  = new RandomAccessFile("d:\\employee.txt" , "rw");
+>             ra.write(e1.name.getBytes());
+>             ra.writeInt(e1.age);
+>             ra.write(e2.name.getBytes());
+>             ra.writeInt(e2.age);
+>             ra.write(e3.name.getBytes());
+>             ra.writeInt(e3.age);
+>             ra.close();
+>             RandomAccessFile raf = new RandomAccessFile("d:\\employee.txt" , "r");
+>             int len = 8;
+>             raf.skipBytes(12);//跳过第一个员工的信息，其姓名8字节，年龄4字节
+>             System.out.println("第二个员工信息：");
+>             String str = "";
+>             for (int i = 0 ; i < len ; i++){
+>                 str = str + (char)raf.readByte();
+>             }
+>             System.out.println("name:" + str);
+>             System.out.println("age:" + raf.readInt());
+>             System.out.println("第一个员工信息：");
+>             raf.seek(0);//将文件指针移动到文件开始位置   
+>             str = "";
+>             for (int i = 0 ; i < len ; i++){
+>                 str = str + (char)raf.readByte();
+>             }
+>             System.out.println("name:" + str);
+>             System.out.println("age:" + raf.readInt());
+>             System.out.println("第三个员工信息：");
+>             raf.skipBytes(12);//跳过第二个员工的信息
+>             str = "";
+>             for (int i = 0 ; i < len ; i++){
+>                 str = str + (char)raf.readByte();
+>             }
+>             System.out.println("name:" + str);
+>             System.out.println("age:" + raf.readInt());
+>             raf.close();
+>         }
+>     }
+>     class Employee {
+>         String name;
+>         int age;
+>         final static int LEN = 8;
+>         public Employee(String name , int age) {
+>             if(name.length() > LEN){
+>                 name = name.substring(0 , 8);
+>             } else {
+>               while (name.length() < LEN){
+>                   name = name + "\u0000";
+>               }
+>                 this.name = name;
+>                 this.age = age;
+>             }
+>         }
+>     }
+
+另一种是使用MappedByteBuffer，对MappedByteBuffer不熟悉的朋友，可以查看如下链接进行了解:
+
+> ### 前言
+>
+> java io操作中通常采用BufferedReader，BufferedInputStream等带缓冲的IO类处理大文件，不过java nio中引入了一种基于MappedByteBuffer操作大文件的方式，其读写性能极高，本文会介绍其性能如此高的内部实现原理。
+>
+> ### 内存管理
+>
+> 在深入MappedByteBuffer之前，先看看计算机内存管理的几个术语：
+>
+> - **MMC**：CPU的内存管理单元。
+> - **物理内存**：即内存条的内存空间。
+> - **虚拟内存**：计算机系统内存管理的一种技术。它使得应用程序认为它拥有连续的可用的内存（一个连续完整的地址空间），而实际上，它通常是被分隔成多个物理内存碎片，还有部分暂时存储在外部磁盘存储器上，在需要时进行数据交换。
+> - **页面文件**：操作系统反映构建并使用虚拟内存的硬盘空间大小而创建的文件，在windows下，即pagefile.sys文件，其存在意味着物理内存被占满后，将暂时不用的数据移动到硬盘上。
+> - **缺页中断**：当程序试图访问已映射在虚拟地址空间中但未被加载至物理内存的一个分页时，由MMC发出的中断。如果操作系统判断此次访问是有效的，则尝试将相关的页从虚拟内存文件中载入物理内存。
+>
+> 为什么会有虚拟内存和物理内存的区别？
+>  如果正在运行的一个进程，它所需的内存是有可能大于内存条容量之和的，如内存条是256M，程序却要创建一个2G的数据区，那么所有数据不可能都加载到内存（物理内存），必然有数据要放到其他介质中（比如硬盘），待进程需要访问那部分数据时，再调度进入物理内存。
+>
+> 什么是虚拟内存地址和物理内存地址？
+>  假设你的计算机是32位，那么它的地址总线是32位的，也就是它可以寻址00xFFFFFFFF（4G）的地址空间，但如果你的计算机只有256M的物理内存0x0x0FFFFFFF（256M），同时你的进程产生了一个不在这256M地址空间中的地址，那么计算机该如何处理呢？回答这个问题前，先说明计算机的内存分页机制。
+>
+> 计算机会对虚拟内存地址空间（32位为4G）进行分页产生页（page），对物理内存地址空间（假设256M）进行分页产生页帧（page frame），页和页帧的大小一样，所以虚拟内存页的个数势必要大于物理内存页帧的个数。在计算机上有一个页表（page table），就是映射虚拟内存页到物理内存页的，更确切的说是页号到页帧号的映射，而且是一对一的映射。
+>  问题来了，虚拟内存页的个数 > 物理内存页帧的个数，岂不是有些虚拟内存页的地址永远没有对应的物理内存地址空间？不是的，操作系统是这样处理的。操作系统有个页面失效（page fault）功能。操作系统找到一个最少使用的页帧，使之失效，并把它写入磁盘，随后把需要访问的页放到页帧中，并修改页表中的映射，保证了所有的页都会被调度。
+>
+> 现在来看看什么是虚拟内存地址和物理内存地址：
+>
+> - 虚拟内存地址：由页号（与页表中的页号关联）和偏移量（页的小大，即这个页能存多少数据）组成。
+>
+> 举个例子，有一个虚拟地址它的页号是4，偏移量是20，那么他的寻址过程是这样的：首先到页表中找到页号4对应的页帧号（比如为8），如果页不在内存中，则用失效机制调入页，接着把页帧号和偏移量传给MMC组成一个物理上真正存在的地址，最后就是访问物理内存的数据了。
+>
+> ### MappedByteBuffer是什么
+>
+> 从继承结构上看，MappedByteBuffer继承自ByteBuffer，内部维护了一个逻辑地址address。
+>
+> ### 示例
+>
+> 通过MappedByteBuffer读取文件
+>
+> ```csharp
+> public class MappedByteBufferTest {
+>     public static void main(String[] args) {
+>         File file = new File("D://data.txt");
+>         long len = file.length();
+>         byte[] ds = new byte[(int) len];
+> 
+>         try {
+>             MappedByteBuffer mappedByteBuffer = new RandomAccessFile(file, "r")
+>                     .getChannel()
+>                     .map(FileChannel.MapMode.READ_ONLY, 0, len);
+>             for (int offset = 0; offset < len; offset++) {
+>                 byte b = mappedByteBuffer.get();
+>                 ds[offset] = b;
+>             }
+> 
+>             Scanner scan = new Scanner(new ByteArrayInputStream(ds)).useDelimiter(" ");
+>             while (scan.hasNext()) {
+>                 System.out.print(scan.next() + " ");
+>             }
+> 
+>         } catch (IOException e) {}
+>     }
+> }
+> ```
+>
+> ### map过程
+>
+> FileChannel提供了map方法把文件映射到虚拟内存，通常情况可以映射整个文件，如果文件比较大，可以进行分段映射。
+>
+> - FileChannel中的几个变量：
+>
+>   - MapMode mode
+>
+>     ：内存映像文件访问的方式，共三种：
+>
+>     1. MapMode.READ_ONLY：只读，试图修改得到的缓冲区将导致抛出异常。
+>     2. MapMode.READ_WRITE：读/写，对得到的缓冲区的更改最终将写入文件；但该更改对映射到同一文件的其他程序不一定是可见的。
+>     3. MapMode.PRIVATE：私用，可读可写,但是修改的内容不会写入文件，只是buffer自身的改变，这种能力称之为”copy on write”。
+>
+>   - **position**：文件映射时的起始位置。
+>
+>   - **allocationGranularity**：Memory allocation size for mapping buffers，通过native函数initIDs初始化。
+>
+> 接下去通过分析源码，了解一下map过程的内部实现。
+>
+> 1. 通过RandomAccessFile获取FileChannel。
+>
+> ```kotlin
+> public final FileChannel getChannel() {
+>     synchronized (this) {
+>         if (channel == null) {
+>             channel = FileChannelImpl.open(fd, path, true, rw, this);
+>         }
+>         return channel;
+>     }
+> }
+> ```
+>
+> 上述实现可以看出，由于synchronized ，只有一个线程能够初始化FileChannel。
+>
+> 1. 通过FileChannel.map方法，把文件映射到虚拟内存，并返回逻辑地址address，实现如下：
+>
+> ```java
+> **只保留了核心代码**
+> public MappedByteBuffer map(MapMode mode, long position, long size)  throws IOException {
+>         int pagePosition = (int)(position % allocationGranularity);
+>         long mapPosition = position - pagePosition;
+>         long mapSize = size + pagePosition;
+>         try {
+>             addr = map0(imode, mapPosition, mapSize);
+>         } catch (OutOfMemoryError x) {
+>             System.gc();
+>             try {
+>                 Thread.sleep(100);
+>             } catch (InterruptedException y) {
+>                 Thread.currentThread().interrupt();
+>             }
+>             try {
+>                 addr = map0(imode, mapPosition, mapSize);
+>             } catch (OutOfMemoryError y) {
+>                 // After a second OOME, fail
+>                 throw new IOException("Map failed", y);
+>             }
+>         }
+>         int isize = (int)size;
+>         Unmapper um = new Unmapper(addr, mapSize, isize, mfd);
+>         if ((!writable) || (imode == MAP_RO)) {
+>             return Util.newMappedByteBufferR(isize,
+>                                              addr + pagePosition,
+>                                              mfd,
+>                                              um);
+>         } else {
+>             return Util.newMappedByteBuffer(isize,
+>                                             addr + pagePosition,
+>                                             mfd,
+>                                             um);
+>         }
+> }
+> ```
+>
+> 上述代码可以看出，最终map通过native函数map0完成文件的映射工作。
+>  \1. 如果第一次文件映射导致OOM，则手动触发垃圾回收，休眠100ms后再次尝试映射，如果失败，则抛出异常。
+>  \2. 通过newMappedByteBuffer方法初始化MappedByteBuffer实例，不过其最终返回的是DirectByteBuffer的实例，实现如下：
+>
+> ```java
+> static MappedByteBuffer newMappedByteBuffer(int size, long addr, FileDescriptor fd, Runnable unmapper) {
+>     MappedByteBuffer dbb;
+>     if (directByteBufferConstructor == null)
+>         initDBBConstructor();
+>     dbb = (MappedByteBuffer)directByteBufferConstructor.newInstance(
+>           new Object[] { new Integer(size),
+>                          new Long(addr),
+>                          fd,
+>                          unmapper }
+>     return dbb;
+> }
+> // 访问权限
+> private static void initDBBConstructor() {
+>     AccessController.doPrivileged(new PrivilegedAction<Void>() {
+>         public Void run() {
+>             Class<?> cl = Class.forName("java.nio.DirectByteBuffer");
+>                 Constructor<?> ctor = cl.getDeclaredConstructor(
+>                     new Class<?>[] { int.class,
+>                                      long.class,
+>                                      FileDescriptor.class,
+>                                      Runnable.class });
+>                 ctor.setAccessible(true);
+>                 directByteBufferConstructor = ctor;
+>         }});
+> }
+> ```
+>
+> 由于FileChannelImpl和DirectByteBuffer不在同一个包中，所以有权限访问问题，通过AccessController类获取DirectByteBuffer的构造器进行实例化。
+>
+> DirectByteBuffer是MappedByteBuffer的一个子类，其实现了对内存的直接操作。
+>
+> ### get过程
+>
+> MappedByteBuffer的get方法最终通过DirectByteBuffer.get方法实现的。
+>
+> ```csharp
+> public byte get() {
+>     return ((unsafe.getByte(ix(nextGetIndex()))));
+> }
+> public byte get(int i) {
+>     return ((unsafe.getByte(ix(checkIndex(i)))));
+> }
+> private long ix(int i) {
+>     return address + (i << 0);
+> }
+> ```
+>
+> map0()函数返回一个地址address，这样就无需调用read或write方法对文件进行读写，通过address就能够操作文件。底层采用unsafe.getByte方法，通过（address + 偏移量）获取指定内存的数据。
+>
+> 1. 第一次访问address所指向的内存区域，导致缺页中断，中断响应函数会在交换区中查找相对应的页面，如果找不到（也就是该文件从来没有被读入内存的情况），则从硬盘上将文件指定页读取到物理内存中（非jvm堆内存）。
+> 2. 如果在拷贝数据时，发现物理内存不够用，则会通过虚拟内存机制（swap）将暂时不用的物理页面交换到硬盘的虚拟内存中。
+>
+> ### 性能分析
+>
+> 从代码层面上看，从硬盘上将文件读入内存，都要经过文件系统进行数据拷贝，并且数据拷贝操作是由文件系统和硬件驱动实现的，理论上来说，拷贝数据的效率是一样的。
+>  但是通过内存映射的方法访问硬盘上的文件，效率要比read和write系统调用高，这是为什么？
+>
+> - read()是系统调用，首先将文件从硬盘拷贝到内核空间的一个缓冲区，再将这些数据拷贝到用户空间，实际上进行了两次数据拷贝；
+> - map()也是系统调用，但没有进行数据拷贝，当缺页中断发生时，直接将文件从硬盘拷贝到用户空间，只进行了一次数据拷贝。
+>
+> 所以，采用内存映射的读写效率要比传统的read/write性能高。
+>
+> ### 总结
+>
+> 1. MappedByteBuffer使用虚拟内存，因此分配(map)的内存大小不受JVM的-Xmx参数限制，但是也是有大小限制的。
+> 2. 如果当文件超出1.5G限制时，可以通过position参数重新map文件后面的内容。
+> 3. MappedByteBuffer在处理大文件时的确性能很高，但也存在一些问题，如内存占用、文件关闭不确定，被其打开的文件只有在垃圾回收的才会被关闭，而且这个时间点是不确定的。
+>     javadoc中也提到：**A mapped byte buffer and the file mapping that it represents remain\* valid until the buffer itself is garbage-collected.**
+
+### 后端进行写入操作的核心代码
+
+a、RandomAccessFile实现方式
+
+```
+@UploadMode(mode = UploadModeEnum.RANDOM_ACCESS)  
+@Slf4j  
+public class RandomAccessUploadStrategy extends SliceUploadTemplate {  
+  
+  @Autowired  
+  private FilePathUtil filePathUtil;  
+  
+  @Value("${upload.chunkSize}")  
+  private long defaultChunkSize;  
+  
+  @Override  
+  public boolean upload(FileUploadRequestDTO param) {  
+    RandomAccessFile accessTmpFile = null;  
+    try {  
+      String uploadDirPath = filePathUtil.getPath(param);  
+      File tmpFile = super.createTmpFile(param);  
+      accessTmpFile = new RandomAccessFile(tmpFile, "rw");  
+      //这个必须与前端设定的值一致  
+      long chunkSize = Objects.isNull(param.getChunkSize()) ? defaultChunkSize * 1024 * 1024  
+          : param.getChunkSize();  
+      long offset = chunkSize * param.getChunk();  
+      //定位到该分片的偏移量  
+      accessTmpFile.seek(offset);  
+      //写入该分片数据  
+      accessTmpFile.write(param.getFile().getBytes());  
+      boolean isOk = super.checkAndSetUploadProgress(param, uploadDirPath);  
+      return isOk;  
+    } catch (IOException e) {  
+      log.error(e.getMessage(), e);  
+    } finally {  
+      FileUtil.close(accessTmpFile);  
+    }  
+   return false;  
+  }  
+  
+}  
+```
+
+b、MappedByteBuffer实现方式
+
+```
+@UploadMode(mode = UploadModeEnum.MAPPED_BYTEBUFFER)  
+@Slf4j  
+public class MappedByteBufferUploadStrategy extends SliceUploadTemplate {  
+  
+  @Autowired  
+  private FilePathUtil filePathUtil;  
+  
+  @Value("${upload.chunkSize}")  
+  private long defaultChunkSize;  
+  
+  @Override  
+  public boolean upload(FileUploadRequestDTO param) {  
+  
+    RandomAccessFile tempRaf = null;  
+    FileChannel fileChannel = null;  
+    MappedByteBuffer mappedByteBuffer = null;  
+    try {  
+      String uploadDirPath = filePathUtil.getPath(param);  
+      File tmpFile = super.createTmpFile(param);  
+      tempRaf = new RandomAccessFile(tmpFile, "rw");  
+      fileChannel = tempRaf.getChannel();  
+  
+      long chunkSize = Objects.isNull(param.getChunkSize()) ? defaultChunkSize * 1024 * 1024  
+          : param.getChunkSize();  
+      //写入该分片数据  
+      long offset = chunkSize * param.getChunk();  
+      byte[] fileData = param.getFile().getBytes();  
+      mappedByteBuffer = fileChannel  
+.map(FileChannel.MapMode.READ_WRITE, offset, fileData.length);  
+      mappedByteBuffer.put(fileData);  
+      boolean isOk = super.checkAndSetUploadProgress(param, uploadDirPath);  
+      return isOk;  
+  
+    } catch (IOException e) {  
+      log.error(e.getMessage(), e);  
+    } finally {  
+  
+      FileUtil.freedMappedByteBuffer(mappedByteBuffer);  
+      FileUtil.close(fileChannel);  
+      FileUtil.close(tempRaf);  
+  
+    }  
+  
+    return false;  
+  }  
+  
+}  
+```
+
+c、文件操作核心模板类代码
+
+```
+@Slf4j  
+public abstract class SliceUploadTemplate implements SliceUploadStrategy {  
+  
+  public abstract boolean upload(FileUploadRequestDTO param);  
+  
+  protected File createTmpFile(FileUploadRequestDTO param) {  
+  
+    FilePathUtil filePathUtil = SpringContextHolder.getBean(FilePathUtil.class);  
+    param.setPath(FileUtil.withoutHeadAndTailDiagonal(param.getPath()));  
+    String fileName = param.getFile().getOriginalFilename();  
+    String uploadDirPath = filePathUtil.getPath(param);  
+    String tempFileName = fileName + "_tmp";  
+    File tmpDir = new File(uploadDirPath);  
+    File tmpFile = new File(uploadDirPath, tempFileName);  
+    if (!tmpDir.exists()) {  
+      tmpDir.mkdirs();  
+    }  
+    return tmpFile;  
+  }  
+  
+  @Override  
+  public FileUploadDTO sliceUpload(FileUploadRequestDTO param) {  
+  
+    boolean isOk = this.upload(param);  
+    if (isOk) {  
+      File tmpFile = this.createTmpFile(param);  
+      FileUploadDTO fileUploadDTO = this.saveAndFileUploadDTO(param.getFile().getOriginalFilename(), tmpFile);  
+      return fileUploadDTO;  
+    }  
+    String md5 = FileMD5Util.getFileMD5(param.getFile());  
+  
+    Map<Integer, String> map = new HashMap<>();  
+    map.put(param.getChunk(), md5);  
+    return FileUploadDTO.builder().chunkMd5Info(map).build();  
+  }  
+  
+  /**  
+   * 检查并修改文件上传进度  
+   */  
+  public boolean checkAndSetUploadProgress(FileUploadRequestDTO param, String uploadDirPath) {  
+  
+    String fileName = param.getFile().getOriginalFilename();  
+    File confFile = new File(uploadDirPath, fileName + ".conf");  
+    byte isComplete = 0;  
+    RandomAccessFile accessConfFile = null;  
+    try {  
+      accessConfFile = new RandomAccessFile(confFile, "rw");  
+      //把该分段标记为 true 表示完成  
+      System.out.println("set part " + param.getChunk() + " complete");  
+      //创建conf文件文件长度为总分片数，每上传一个分块即向conf文件中写入一个127，那么没上传的位置就是默认0,已上传的就是Byte.MAX_VALUE 127  
+      accessConfFile.setLength(param.getChunks());  
+      accessConfFile.seek(param.getChunk());  
+      accessConfFile.write(Byte.MAX_VALUE);  
+  
+      //completeList 检查是否全部完成,如果数组里是否全部都是127(全部分片都成功上传)  
+      byte[] completeList = FileUtils.readFileToByteArray(confFile);  
+      isComplete = Byte.MAX_VALUE;  
+      for (int i = 0; i < completeList.length && isComplete == Byte.MAX_VALUE; i++) {  
+        //与运算, 如果有部分没有完成则 isComplete 不是 Byte.MAX_VALUE  
+        isComplete = (byte) (isComplete & completeList[i]);  
+        System.out.println("check part " + i + " complete?:" + completeList[i]);  
+      }  
+  
+    } catch (IOException e) {  
+      log.error(e.getMessage(), e);  
+    } finally {  
+      FileUtil.close(accessConfFile);  
+    }  
+ boolean isOk = setUploadProgress2Redis(param, uploadDirPath, fileName, confFile, isComplete);  
+    return isOk;  
+  }  
+  
+  /**  
+   * 把上传进度信息存进redis  
+   */  
+  private boolean setUploadProgress2Redis(FileUploadRequestDTO param, String uploadDirPath,  
+      String fileName, File confFile, byte isComplete) {  
+  
+    RedisUtil redisUtil = SpringContextHolder.getBean(RedisUtil.class);  
+    if (isComplete == Byte.MAX_VALUE) {  
+      redisUtil.hset(FileConstant.FILE_UPLOAD_STATUS, param.getMd5(), "true");  
+      redisUtil.del(FileConstant.FILE_MD5_KEY + param.getMd5());  
+      confFile.delete();  
+      return true;  
+    } else {  
+      if (!redisUtil.hHasKey(FileConstant.FILE_UPLOAD_STATUS, param.getMd5())) {  
+        redisUtil.hset(FileConstant.FILE_UPLOAD_STATUS, param.getMd5(), "false");  
+        redisUtil.set(FileConstant.FILE_MD5_KEY + param.getMd5(),  
+            uploadDirPath + FileConstant.FILE_SEPARATORCHAR + fileName + ".conf");  
+      }  
+  
+      return false;  
+    }  
+  }  
+/**  
+   * 保存文件操作  
+   */  
+  public FileUploadDTO saveAndFileUploadDTO(String fileName, File tmpFile) {  
+  
+    FileUploadDTO fileUploadDTO = null;  
+  
+    try {  
+  
+      fileUploadDTO = renameFile(tmpFile, fileName);  
+      if (fileUploadDTO.isUploadComplete()) {  
+        System.out  
+            .println("upload complete !!" + fileUploadDTO.isUploadComplete() + " name=" + fileName);  
+        //TODO 保存文件信息到数据库  
+  
+      }  
+  
+    } catch (Exception e) {  
+      log.error(e.getMessage(), e);  
+    } finally {  
+  
+    }  
+    return fileUploadDTO;  
+  }  
+/**  
+   * 文件重命名  
+   *  
+   * @param toBeRenamed 将要修改名字的文件  
+   * @param toFileNewName 新的名字  
+   */  
+  private FileUploadDTO renameFile(File toBeRenamed, String toFileNewName) {  
+    //检查要重命名的文件是否存在，是否是文件  
+    FileUploadDTO fileUploadDTO = new FileUploadDTO();  
+    if (!toBeRenamed.exists() || toBeRenamed.isDirectory()) {  
+      log.info("File does not exist: {}", toBeRenamed.getName());  
+      fileUploadDTO.setUploadComplete(false);  
+      return fileUploadDTO;  
+    }  
+    String ext = FileUtil.getExtension(toFileNewName);  
+    String p = toBeRenamed.getParent();  
+    String filePath = p + FileConstant.FILE_SEPARATORCHAR + toFileNewName;  
+    File newFile = new File(filePath);  
+    //修改文件名  
+    boolean uploadFlag = toBeRenamed.renameTo(newFile);  
+  
+    fileUploadDTO.setMtime(DateUtil.getCurrentTimeStamp());  
+    fileUploadDTO.setUploadComplete(uploadFlag);  
+    fileUploadDTO.setPath(filePath);  
+    fileUploadDTO.setSize(newFile.length());  
+    fileUploadDTO.setFileExt(ext);  
+    fileUploadDTO.setFileId(toFileNewName);  
+  
+    return fileUploadDTO;  
+  }  
+}  
+```
+
+## **总结**
+
+在实现分片上传的过程，需要前端和后端配合，比如前后端的上传块号的文件大小，前后端必须得要一致，否则上传就会有问题。其次文件相关操作正常都是要搭建一个文件服务器的，比如使用fastdfs、hdfs等。
 
 
 
